@@ -4,30 +4,38 @@ interface KpiCardProps {
   title: string;
   value: string | number;
   subtitle?: string;
+  subtitleLink?: () => void;
   icon: ReactNode;
   accent?: 'blue' | 'green' | 'amber' | 'red' | 'orange' | 'slate';
 }
 
 const accentMap = {
-  blue: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20' },
-  green: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
-  amber: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20' },
-  red: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/20' },
-  orange: { bg: 'bg-[#F47920]/10', text: 'text-[#F47920]', border: 'border-[#F47920]/20' },
-  slate: { bg: 'bg-slate-500/10', text: 'text-slate-400', border: 'border-slate-500/20' },
+  blue:   { bg: 'bg-blue-50',   text: 'text-blue-500',   val: 'text-blue-600' },
+  green:  { bg: 'bg-emerald-50',text: 'text-emerald-500',val: 'text-emerald-600' },
+  amber:  { bg: 'bg-amber-50',  text: 'text-amber-500',  val: 'text-amber-600' },
+  red:    { bg: 'bg-red-50',    text: 'text-red-500',    val: 'text-red-600' },
+  orange: { bg: 'bg-orange-50', text: 'text-[#F47920]',  val: 'text-[#F47920]' },
+  slate:  { bg: 'bg-slate-100', text: 'text-slate-500',  val: 'text-slate-700' },
 };
 
-export function KpiCard({ title, value, subtitle, icon, accent = 'slate' }: KpiCardProps) {
+export function KpiCard({ title, value, subtitle, subtitleLink, icon, accent = 'slate' }: KpiCardProps) {
   const c = accentMap[accent];
   return (
-    <div className={`relative overflow-hidden rounded-xl border ${c.border} bg-[#0f1117]/80 p-4 backdrop-blur-sm transition-all hover:scale-[1.02] hover:border-slate-600`}>
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-slate-400">{title}</p>
-          <p className="mt-1 text-2xl font-bold text-white">{value}</p>
-          {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{title}</p>
+          <p className={`mt-1.5 text-3xl font-bold ${c.val}`}>{value}</p>
+          {subtitle && (
+            <p
+              onClick={subtitleLink}
+              className={`mt-1 text-xs ${subtitleLink ? 'cursor-pointer text-[#F47920] hover:underline' : 'text-gray-500'}`}
+            >
+              {subtitle}
+            </p>
+          )}
         </div>
-        <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${c.bg} ${c.text}`}>
+        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${c.bg} ${c.text}`}>
           {icon}
         </div>
       </div>

@@ -2,38 +2,55 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { CadastroRealizado, Filters } from '@/types';
 import { filterCadastros, getUniqueAtendentes } from '@/utils/filters';
-import { useCadastroKPIs } from '@/hooks/useKPIs';
 import { FilterBar } from '@/components/FilterBar';
-import { KpiCard } from '@/components/KpiCard';
-import { Panel } from '@/components/Panel';
-import { BarChart, DonutChart } from '@/components/Charts';
-import { FileCheck, CheckCircle2, AlertTriangle, XCircle, Clock, Gauge, Timer, Plus, Pencil, Trash2, Save, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Save, X, FileCheck } from 'lucide-react';
+import type { ReactNode } from 'react';
 
-const STATUS_COLORS: Record<string, string> = {
-  'Validado': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-  'Pendência': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  'Recusado': 'bg-red-500/10 text-red-400 border-red-500/20',
-  'Andamento': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; icon: ReactNode }> = {
+  'Validado':  { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-300', icon: <span className="h-3 w-3 rounded-full border-2 border-emerald-500 flex items-center justify-center"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /></span> },
+  'Andamento': { bg: 'bg-blue-50',    text: 'text-blue-600',    border: 'border-blue-300',    icon: <span className="text-[10px]">⏱</span> },
+  'Pendência': { bg: 'bg-amber-50',   text: 'text-amber-600',   border: 'border-amber-300',   icon: <span className="text-[10px]">⚠</span> },
+  'Recusado':  { bg: 'bg-red-50',     text: 'text-red-600',     border: 'border-red-300',     icon: <span className="text-[10px]">✕</span> },
 };
 
-const EMPTY: Omit<CadastroRealizado, 'id' | 'created_at' | 'updated_at'> = {
+function StatusBadge({ status }: { status: string | null }) {
+  if (!status) return null;
+  const s = STATUS_STYLES[status] ?? { bg: 'bg-gray-100', text: 'text-gray-500', border: 'border-gray-300', icon: null };
+  return (
+    <span className={`inline-flex items-center gap-1 rounded border px-2.5 py-1 text-xs font-medium ${s.bg} ${s.text} ${s.border}`}>
+      {s.icon} {status}
+    </span>
+  );
+}
+
+function classifBadge(c: string | null) {
+  if (!c) return '';
+  const l = c.toLowerCase();
+  if (l.includes('crítica') || l.includes('critica') || l.includes('risco')) return 'bg-red-100 text-red-700';
+  if (l.includes('alta')) return 'bg-orange-100 text-orange-700';
+  return 'bg-gray-100 text-gray-600';
+}
+
+const EMPTY = {
   mes: '', turno: '', operacao: '', classificacao: '', data: '', horario_inicio: '',
   pis: '', motorista: '', placa_cavalo: '', tipo_veiculo: '', ano_cavalo: '',
   placa_carreta: '', ano_carreta: '', atendente: '', tentativa_1: '', tentativa_2: '',
   tentativa_3: '', tipo: '', status: 'Andamento', pendencia_recusa: '', horario_fim: '', obs: '',
 };
+type FormType = typeof EMPTY;
 
-const COLS: { key: keyof typeof EMPTY; label: string; type?: string }[] = [
+const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: boolean }[] = [
   { key: 'mes', label: 'Mês' },
   { key: 'turno', label: 'Turno' },
   { key: 'operacao', label: 'Operação' },
   { key: 'classificacao', label: 'Classificação' },
   { key: 'data', label: 'Data', type: 'date' },
   { key: 'horario_inicio', label: 'Horário Início', type: 'time' },
+  { key: 'horario_fim', label: 'Horário Fim', type: 'time' },
   { key: 'pis', label: 'PIS' },
   { key: 'motorista', label: 'Motorista' },
   { key: 'placa_cavalo', label: 'Placa Cavalo' },
-  { key: 'tipo_veiculo', label: 'Tipo' },
+  { key: 'tipo_veiculo', label: 'Tipo Veículo' },
   { key: 'ano_cavalo', label: 'Ano Cavalo' },
   { key: 'placa_carreta', label: 'Placa Carreta' },
   { key: 'ano_carreta', label: 'Ano Carreta' },
@@ -42,17 +59,20 @@ const COLS: { key: keyof typeof EMPTY; label: string; type?: string }[] = [
   { key: 'tentativa_2', label: '2ª Tentativa' },
   { key: 'tentativa_3', label: '3ª Tentativa' },
   { key: 'tipo', label: 'Tipo' },
-  { key: 'pendencia_recusa', label: 'Pendência/Recusa' },
-  { key: 'horario_fim', label: 'Horário Fim', type: 'time' },
-  { key: 'obs', label: 'OBS' },
+  { key: 'pendencia_recusa', label: 'Pendência / Recusa', span: true },
+  { key: 'obs', label: 'OBS', span: true },
 ];
 
-export function CadastroRealizadoView({ filters, onFiltersChange }: { filters: Filters; onFiltersChange: (f: Filters) => void }) {
+const inputCls = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-[#F47920] focus:outline-none focus:ring-1 focus:ring-[#F47920]/20';
+
+interface Props { filters: Filters; onFiltersChange: (f: Filters) => void; showNewForm?: boolean; onNewFormHandled?: () => void; }
+
+export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, onNewFormHandled }: Props) {
   const [records, setRecords] = useState<CadastroRealizado[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<CadastroRealizado | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<typeof EMPTY>(EMPTY);
+  const [form, setForm] = useState<FormType>(EMPTY);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,8 +83,11 @@ export function CadastroRealizadoView({ filters, onFiltersChange }: { filters: F
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (showNewForm) { startNew(); onNewFormHandled?.(); }
+  }, [showNewForm]);
+
   const filtered = filterCadastros(records, filters);
-  const kpis = useCadastroKPIs(filtered);
   const atendentes = getUniqueAtendentes(records, []);
 
   const save = async () => {
@@ -73,13 +96,11 @@ export function CadastroRealizadoView({ filters, onFiltersChange }: { filters: F
     } else {
       await supabase.from('cadastro_realizado').insert(form);
     }
-    setShowForm(false);
-    setEditing(null);
-    setForm(EMPTY);
-    await load();
+    setShowForm(false); setEditing(null); setForm(EMPTY); await load();
   };
 
   const remove = async (id: string) => {
+    if (!window.confirm('Remover este registro?')) return;
     await supabase.from('cadastro_realizado').delete().eq('id', id);
     await load();
   };
@@ -87,184 +108,158 @@ export function CadastroRealizadoView({ filters, onFiltersChange }: { filters: F
   const startEdit = (r: CadastroRealizado) => {
     setEditing(r);
     const { id, created_at, updated_at, ...rest } = r;
-    setForm(rest);
+    setForm({ ...EMPTY, ...Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, v ?? ''])) } as FormType);
     setShowForm(true);
   };
 
-  const startNew = () => {
-    setEditing(null);
-    setForm(EMPTY);
-    setShowForm(true);
-  };
+  const startNew = () => { setEditing(null); setForm(EMPTY); setShowForm(true); };
 
-  const barData = (['1T', '2T', '3T'] as const).map(t => {
-    const recs = filtered.filter(r => r.turno === t);
-    return {
-      label: t,
-      validados: recs.filter(r => r.status === 'Validado').length,
-      pendencias: recs.filter(r => r.status === 'Pendência').length,
-      outros: recs.filter(r => r.status && r.status !== 'Validado' && r.status !== 'Pendência').length,
-    };
-  });
+  const fmtDate = (d: string | null) => d ? new Date(d + 'T00:00').toLocaleDateString('pt-BR') : '-';
 
-  const donutSegs = [
-    { label: 'Validados', value: kpis.validados, color: '#10b981' },
-    { label: 'Pendências', value: kpis.pendencias, color: '#f59e0b' },
-    { label: 'Recusados', value: kpis.recusados, color: '#ef4444' },
-    { label: 'Andamento', value: kpis.andamento, color: '#3b82f6' },
-  ];
-
-  if (loading) return <div className="flex h-96 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-[#F47920]" /></div>;
+  if (loading) return <div className="flex h-64 items-center justify-center"><div className="h-7 w-7 animate-spin rounded-full border-2 border-gray-200 border-t-[#F47920]" /></div>;
 
   return (
     <div className="space-y-4">
+      {/* Page header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-[#F47920]">
+            <FileCheck className="h-3.5 w-3.5" /> Setor de Cadastro / GRIS
+          </p>
+          <h2 className="mt-0.5 text-2xl font-bold text-gray-900">Cadastro Realizado</h2>
+          <p className="mt-0.5 text-sm text-gray-500">Controle de motoristas, veículos, carretas, tentativas de validação e status de liberação.</p>
+        </div>
+        <button
+          onClick={startNew}
+          className="flex shrink-0 items-center gap-2 rounded-lg bg-[#F47920] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#F47920]/20 transition-colors hover:bg-[#d96a15]"
+        >
+          <Plus className="h-4 w-4" /> + NOVO CADASTRO
+        </button>
+      </div>
+
+      {/* Filters */}
       <FilterBar filters={filters} onChange={onFiltersChange} atendentes={atendentes} />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        <KpiCard title="Total" value={kpis.totalCadastros} icon={<FileCheck className="h-5 w-5" />} accent="blue" />
-        <KpiCard title="Validados" value={kpis.validados} icon={<CheckCircle2 className="h-5 w-5" />} accent="green" />
-        <KpiCard title="Pendências" value={kpis.pendencias} icon={<AlertTriangle className="h-5 w-5" />} accent="amber" />
-        <KpiCard title="Recusados" value={kpis.recusados} icon={<XCircle className="h-5 w-5" />} accent="red" />
-        <KpiCard title="Andamento" value={kpis.andamento} icon={<Clock className="h-5 w-5" />} accent="slate" />
-        <KpiCard title="Eficiência" value={`${kpis.eficiencia}%`} icon={<Gauge className="h-5 w-5" />} accent="green" />
-        <KpiCard title="T. Médio" value={`${kpis.tempoMedioMin}min`} icon={<Timer className="h-5 w-5" />} accent="orange" />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Panel title="Por Turno" className="lg:col-span-2">
-          <BarChart data={barData} />
-        </Panel>
-        <Panel title="Status">
-          <div className="flex flex-col items-center gap-3">
-            <DonutChart segments={donutSegs} />
-            <div className="grid w-full grid-cols-2 gap-2 text-xs">
-              {donutSegs.map(s => (
-                <div key={s.label} className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />
-                  <span className="text-slate-300">{s.label}</span>
-                  <span className="ml-auto font-semibold text-white">{s.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Panel>
-      </div>
-
-      <Panel
-        title="Registros de Cadastro Realizado"
-        subtitle={`${filtered.length} registros`}
-        action={
-          <button onClick={startNew} className="flex items-center gap-1.5 rounded-lg bg-[#F47920] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#d96a15]">
-            <Plus className="h-4 w-4" /> Novo
-          </button>
-        }
-      >
+      {/* Table */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-800/60 text-left text-xs uppercase tracking-wider text-slate-500">
-                <th className="pb-2 pr-3 font-medium">Mês</th>
-                <th className="pb-2 pr-3 font-medium">Turno</th>
-                <th className="pb-2 pr-3 font-medium">Operação</th>
-                <th className="pb-2 pr-3 font-medium">Classificação</th>
-                <th className="pb-2 pr-3 font-medium">Data</th>
-                <th className="pb-2 pr-3 font-medium">Início</th>
-                <th className="pb-2 pr-3 font-medium">PIS</th>
-                <th className="pb-2 pr-3 font-medium">Motorista</th>
-                <th className="pb-2 pr-3 font-medium">Placa Cavalo</th>
-                <th className="pb-2 pr-3 font-medium">Tipo</th>
-                <th className="pb-2 pr-3 font-medium">Ano</th>
-                <th className="pb-2 pr-3 font-medium">Placa Carreta</th>
-                <th className="pb-2 pr-3 font-medium">Ano</th>
-                <th className="pb-2 pr-3 font-medium">Atendente</th>
-                <th className="pb-2 pr-3 font-medium">1ª</th>
-                <th className="pb-2 pr-3 font-medium">2ª</th>
-                <th className="pb-2 pr-3 font-medium">3ª</th>
-                <th className="pb-2 pr-3 font-medium">Tipo</th>
-                <th className="pb-2 pr-3 font-medium">Status</th>
-                <th className="pb-2 pr-3 font-medium">Pendência/Recusa</th>
-                <th className="pb-2 pr-3 font-medium">Fim</th>
-                <th className="pb-2 pr-3 font-medium">OBS</th>
-                <th className="pb-2 font-medium">Ações</th>
+              <tr className="bg-[#1a2535] text-left text-xs font-semibold text-gray-300">
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Mês / Turno</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Operação / Classif.</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Data / Horário</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Motorista & PIS</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Cavalo / Carreta</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Atendente</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Tentativas</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Tipo</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Pendência / Recusa</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(r => (
-                <tr key={r.id} className="border-b border-slate-800/40 transition-colors hover:bg-slate-800/30">
-                  <td className="py-2 pr-3 text-slate-300">{r.mes ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.turno ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.operacao ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.classificacao ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.data ? new Date(r.data + 'T00:00').toLocaleDateString('pt-BR') : '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.horario_inicio ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.pis ?? '-'}</td>
-                  <td className="py-2 pr-3 text-white">{r.motorista ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.placa_cavalo ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.tipo_veiculo ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.ano_cavalo ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.placa_carreta ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.ano_carreta ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.atendente ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-400">{r.tentativa_1 ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-400">{r.tentativa_2 ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-400">{r.tentativa_3 ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.tipo ?? '-'}</td>
-                  <td className="py-2 pr-3">
-                    {r.status && <span className={`inline-block rounded border px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[r.status] ?? 'border-slate-700 text-slate-400'}`}>{r.status}</span>}
+              {filtered.map((r) => (
+                <tr key={r.id} className="border-b border-gray-100 transition-colors hover:bg-orange-50/20">
+                  <td className="px-4 py-4 align-top">
+                    <p className="font-semibold text-gray-800">{r.mes ?? '-'}</p>
+                    <p className="text-xs text-gray-500">{r.turno ?? '-'}</p>
                   </td>
-                  <td className="py-2 pr-3 text-slate-400">{r.pendencia_recusa ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-300">{r.horario_fim ?? '-'}</td>
-                  <td className="py-2 pr-3 text-slate-400 max-w-[160px] truncate" title={r.obs ?? ''}>{r.obs ?? '-'}</td>
-                  <td className="py-2">
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => startEdit(r)} className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-white"><Pencil className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => remove(r.id)} className="rounded p-1 text-slate-400 hover:bg-red-500/20 hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <td className="px-4 py-4 align-top">
+                    <p className="font-medium text-gray-800">{r.operacao ?? '-'}</p>
+                    {r.classificacao && (
+                      <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${classifBadge(r.classificacao)}`}>{r.classificacao}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-4 align-top whitespace-nowrap">
+                    <p className="text-gray-800">{fmtDate(r.data)}</p>
+                    {(r.horario_inicio || r.horario_fim) && (
+                      <p className="text-xs text-gray-500">{r.horario_inicio ?? ''}{r.horario_inicio && r.horario_fim ? ' – ' : ''}{r.horario_fim ?? ''}</p>
+                    )}
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <p className="font-semibold text-gray-800">{r.motorista ?? '-'}</p>
+                    {r.pis && <p className="text-xs text-gray-500">PIS: {r.pis}</p>}
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <p className="font-medium text-gray-800">{r.placa_cavalo ?? '-'}</p>
+                    <p className="text-xs text-gray-500">
+                      {[r.tipo_veiculo, r.ano_cavalo].filter(Boolean).join(' / ')}
+                      {r.placa_carreta && <> / {r.placa_carreta}{r.ano_carreta ? ' / ' + r.ano_carreta : ''}</>}
+                    </p>
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <p className="text-gray-700">{r.atendente ?? '-'}</p>
+                  </td>
+                  <td className="px-4 py-4 align-top whitespace-nowrap">
+                    <p className="text-xs text-gray-600">1ª: {r.tentativa_1 || '-'}</p>
+                    <p className="text-xs text-gray-600">2ª: {r.tentativa_2 || '-'}</p>
+                    <p className="text-xs text-gray-600">3ª: {r.tentativa_3 || '-'}</p>
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <p className="text-gray-700">{r.tipo ?? '-'}</p>
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <StatusBadge status={r.status} />
+                  </td>
+                  <td className="max-w-[220px] px-4 py-4 align-top">
+                    <p className="text-sm text-gray-700">{r.pendencia_recusa || '-'}</p>
+                    {r.obs && <p className="mt-0.5 text-xs text-gray-400 line-clamp-2">OBS: {r.obs}</p>}
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"><Pencil className="h-4 w-4" /></button>
+                      <button onClick={() => remove(r.id)} className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                     </div>
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={23} className="py-8 text-center text-slate-500">Nenhum registro encontrado</td></tr>}
+              {filtered.length === 0 && (
+                <tr><td colSpan={11} className="py-12 text-center text-gray-400">Nenhum registro encontrado. Crie o primeiro com "+ NOVO CADASTRO".</td></tr>
+              )}
             </tbody>
           </table>
         </div>
-      </Panel>
+        <div className="border-t border-gray-100 px-4 py-2 text-right text-xs text-gray-400">{filtered.length} registro(s)</div>
+      </div>
 
+      {/* Modal form */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl border border-slate-700 bg-[#0f1117] p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">{editing ? 'Editar Cadastro' : 'Novo Cadastro'}</h2>
-              <button onClick={() => setShowForm(false)} className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"><X className="h-5 w-5" /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl">
+            <div className="sticky top-0 flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#F47920]">Setor de Cadastro / GRIS</p>
+                <h3 className="text-lg font-bold text-gray-900">{editing ? 'Editar Cadastro' : 'Novo Cadastro'}</h3>
+              </div>
+              <button onClick={() => setShowForm(false)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X className="h-5 w-5" /></button>
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {COLS.map(col => (
-                <div key={col.key}>
-                  <label className="mb-1 block text-xs font-medium text-slate-400">{col.label}</label>
+            <div className="grid grid-cols-2 gap-4 p-6 md:grid-cols-4">
+              {FORM_FIELDS.map(col => (
+                <div key={col.key} className={col.span ? 'col-span-2' : ''}>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">{col.label}</label>
                   <input
                     type={col.type ?? 'text'}
                     value={form[col.key] ?? ''}
                     onChange={e => setForm({ ...form, [col.key]: e.target.value })}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-sm text-white focus:border-[#F47920]/50 focus:outline-none"
+                    className={inputCls}
                   />
                 </div>
               ))}
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-400">Status</label>
-                <select
-                  value={form.status ?? 'Andamento'}
-                  onChange={e => setForm({ ...form, status: e.target.value })}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-sm text-white focus:border-[#F47920]/50 focus:outline-none"
-                >
-                  <option value="Andamento">Andamento</option>
-                  <option value="Validado">Validado</option>
-                  <option value="Pendência">Pendência</option>
-                  <option value="Recusado">Recusado</option>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Status</label>
+                <select value={form.status ?? 'Andamento'} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
+                  <option>Andamento</option>
+                  <option>Validado</option>
+                  <option>Pendência</option>
+                  <option>Recusado</option>
                 </select>
               </div>
             </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setShowForm(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancelar</button>
-              <button onClick={save} className="flex items-center gap-1.5 rounded-lg bg-[#F47920] px-4 py-2 text-sm font-medium text-white hover:bg-[#d96a15]"><Save className="h-4 w-4" /> Salvar</button>
+            <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
+              <button onClick={() => setShowForm(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
+              <button onClick={save} className="flex items-center gap-1.5 rounded-lg bg-[#F47920] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d96a15]"><Save className="h-4 w-4" /> Salvar</button>
             </div>
           </div>
         </div>

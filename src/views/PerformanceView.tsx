@@ -16,6 +16,8 @@ function calcMinutes(inicio: string | null, fim: string | null): number | null {
   return diff > 0 ? diff : null;
 }
 
+const meta = 85;
+
 export function PerformanceView({ filters, onFiltersChange }: { filters: Filters; onFiltersChange: (f: Filters) => void }) {
   const [cadastros, setCadastros] = useState<CadastroRealizado[]>([]);
   const [checklists, setChecklists] = useState<ChecklistOperacional[]>([]);
@@ -43,13 +45,8 @@ export function PerformanceView({ filters, onFiltersChange }: { filters: Filters
   const allAtendentes = [...cadByAtend, ...chkByAtend]
     .reduce((acc, cur) => {
       const existing = acc.find(a => a.name === cur.name);
-      if (existing) {
-        existing.total += cur.total;
-        existing.validados += cur.validados;
-        existing.pendencias += cur.pendencias;
-      } else {
-        acc.push({ ...cur });
-      }
+      if (existing) { existing.total += cur.total; existing.validados += cur.validados; existing.pendencias += cur.pendencias; }
+      else acc.push({ ...cur });
       return acc;
     }, [] as { name: string; total: number; validados: number; pendencias: number; eficiencia: number }[])
     .sort((a, b) => b.eficiencia - a.eficiencia);
@@ -61,88 +58,68 @@ export function PerformanceView({ filters, onFiltersChange }: { filters: Filters
       const min = calcMinutes(r.horario_inicio, r.horario_fim);
       if (min !== null) {
         if (!acc[a]) acc[a] = { sum: 0, count: 0 };
-        acc[a].sum += min;
-        acc[a].count++;
+        acc[a].sum += min; acc[a].count++;
       }
       return acc;
     }, {} as Record<string, { sum: number; count: number }>);
 
   const tempoData = Object.entries(tempoPorAtendente)
     .map(([name, d]) => ({ label: name.split(' ')[0], value: Math.round(d.sum / d.count) }))
-    .sort((a, b) => a.value - b.value)
-    .slice(0, 8);
+    .sort((a, b) => a.value - b.value).slice(0, 8);
 
-  const meta = 85;
   const atingiramMeta = allAtendentes.filter(a => a.eficiencia >= meta).length;
   const taxaAtingimento = allAtendentes.length > 0 ? Math.round((atingiramMeta / allAtendentes.length) * 100) : 0;
 
-  if (loading) return <div className="flex h-96 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-[#F47920]" /></div>;
+  if (loading) return <div className="flex h-96 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-[#F47920]" /></div>;
 
   return (
     <div className="space-y-4">
+      {/* Page header */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-widest text-[#F47920]">Análise Gerencial</p>
+        <h2 className="mt-0.5 text-2xl font-bold text-gray-900">Performance Operacional</h2>
+        <p className="mt-0.5 text-sm text-gray-500">Eficiência, ranking e tempo médio de atendimento por operador.</p>
+      </div>
+
       <FilterBar filters={filters} onChange={onFiltersChange} atendentes={atendentes} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-slate-800/60 bg-[#0f1117]/80 p-5 backdrop-blur-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
-              <Target className="h-6 w-6" />
-            </div>
+        {[
+          { label: 'Atingimento de Meta', value: `${taxaAtingimento}%`, sub: `${atingiramMeta} de ${allAtendentes.length} acima de ${meta}%`, icon: <Target className="h-6 w-6" />, color: 'bg-emerald-50 text-emerald-500' },
+          { label: 'Melhor Operador', value: allAtendentes[0]?.name ?? '-', sub: `${allAtendentes[0]?.eficiencia ?? 0}% de eficiência`, icon: <Award className="h-6 w-6" />, color: 'bg-orange-50 text-[#F47920]' },
+          { label: 'Volume Total', value: filteredCad.length + filteredChk.length, sub: 'registros no período', icon: <Activity className="h-6 w-6" />, color: 'bg-blue-50 text-blue-500' },
+        ].map(c => (
+          <div key={c.label} className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${c.color}`}>{c.icon}</div>
             <div>
-              <p className="text-xs uppercase tracking-wider text-slate-400">Atingimento de Meta</p>
-              <p className="text-2xl font-bold text-white">{taxaAtingimento}%</p>
-              <p className="text-xs text-slate-500">{atingiramMeta} de {allAtendentes.length} operadores acima de {meta}%</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{c.label}</p>
+              <p className="mt-0.5 text-xl font-bold text-gray-900">{c.value}</p>
+              <p className="text-xs text-gray-500">{c.sub}</p>
             </div>
           </div>
-        </div>
-
-        <div className="rounded-xl border border-slate-800/60 bg-[#0f1117]/80 p-5 backdrop-blur-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#F47920]/10 text-[#F47920]">
-              <Award className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wider text-slate-400">Melhor Operador</p>
-              <p className="text-2xl font-bold text-white">{allAtendentes[0]?.name ?? '-'}</p>
-              <p className="text-xs text-slate-500">{allAtendentes[0]?.eficiencia ?? 0}% de eficiência</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-slate-800/60 bg-[#0f1117]/80 p-5 backdrop-blur-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400">
-              <Activity className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wider text-slate-400">Volume Total</p>
-              <p className="text-2xl font-bold text-white">{filteredCad.length + filteredChk.length}</p>
-              <p className="text-xs text-slate-500">registros no período</p>
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title="Eficiência por Operador" subtitle="Validados / Total" action={<TrendingUp className="h-4 w-4 text-slate-500" />}>
+        <Panel title="Eficiência por Operador" subtitle="Validados / Total" action={<TrendingUp className="h-4 w-4 text-[#F47920]" />}>
           <div className="space-y-3">
             {allAtendentes.map(a => (
               <div key={a.name}>
                 <div className="mb-1 flex items-center justify-between text-sm">
-                  <span className="font-medium text-white">{a.name}</span>
-                  <span className="text-slate-400">{a.validados}/{a.total} <span className={`ml-2 font-semibold ${a.eficiencia >= meta ? 'text-emerald-400' : 'text-amber-400'}`}>{a.eficiencia}%</span></span>
+                  <span className="font-medium text-gray-800">{a.name}</span>
+                  <span className="text-gray-500">{a.validados}/{a.total}{' '}<span className={`ml-2 font-semibold ${a.eficiencia >= meta ? 'text-emerald-600' : 'text-amber-500'}`}>{a.eficiencia}%</span></span>
                 </div>
-                <div className="h-2.5 overflow-hidden rounded-full bg-slate-800">
-                  <div className={`h-full rounded-full transition-all ${a.eficiencia >= meta ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${a.eficiencia}%` }} />
+                <div className="h-2.5 overflow-hidden rounded-full bg-gray-100">
+                  <div className={`h-full rounded-full transition-all ${a.eficiencia >= meta ? 'bg-emerald-500' : 'bg-amber-400'}`} style={{ width: `${a.eficiencia}%` }} />
                 </div>
               </div>
             ))}
-            {allAtendentes.length === 0 && <p className="py-4 text-center text-slate-500">Sem dados</p>}
+            {allAtendentes.length === 0 && <p className="py-4 text-center text-gray-400">Sem dados</p>}
           </div>
         </Panel>
 
         <Panel title="Tempo Médio de Atendimento" subtitle="Minutos por operador">
-          {tempoData.length > 0 ? <LineChart data={tempoData} color="#3b82f6" /> : <p className="py-8 text-center text-slate-500">Sem dados de horário</p>}
+          {tempoData.length > 0 ? <LineChart data={tempoData} color="#3b82f6" /> : <p className="py-8 text-center text-gray-400">Sem dados de horário</p>}
         </Panel>
       </div>
 
@@ -150,43 +127,41 @@ export function PerformanceView({ filters, onFiltersChange }: { filters: Filters
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-800/60 text-left text-xs uppercase tracking-wider text-slate-500">
-                <th className="pb-2 pr-4 font-medium">#</th>
-                <th className="pb-2 pr-4 font-medium">Operador</th>
-                <th className="pb-2 pr-4 font-medium">Total</th>
-                <th className="pb-2 pr-4 font-medium">Validados</th>
-                <th className="pb-2 pr-4 font-medium">Pendências</th>
-                <th className="pb-2 pr-4 font-medium">Taxa de Erro</th>
-                <th className="pb-2 font-medium">Eficiência</th>
+              <tr className="border-b border-gray-100 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">
+                <th className="pb-2 pr-4 font-semibold">#</th>
+                <th className="pb-2 pr-4 font-semibold">Operador</th>
+                <th className="pb-2 pr-4 font-semibold">Total</th>
+                <th className="pb-2 pr-4 font-semibold">Validados</th>
+                <th className="pb-2 pr-4 font-semibold">Pendências</th>
+                <th className="pb-2 pr-4 font-semibold">Taxa de Erro</th>
+                <th className="pb-2 font-semibold">Eficiência</th>
               </tr>
             </thead>
             <tbody>
               {allAtendentes.map((a, i) => {
                 const taxaErro = a.total > 0 ? Math.round((a.pendencias / a.total) * 100) : 0;
                 return (
-                  <tr key={a.name} className="border-b border-slate-800/40 transition-colors hover:bg-slate-800/30">
-                    <td className="py-2.5 pr-4">
-                      <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${i === 0 ? 'bg-[#F47920]/20 text-[#F47920]' : i === 1 ? 'bg-slate-400/20 text-slate-300' : i === 2 ? 'bg-orange-700/20 text-orange-600' : 'bg-slate-800 text-slate-500'}`}>{i + 1}</span>
+                  <tr key={a.name} className="border-b border-gray-50 transition-colors hover:bg-orange-50/20">
+                    <td className="py-3 pr-4">
+                      <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${i === 0 ? 'bg-[#F47920]/15 text-[#F47920]' : i === 1 ? 'bg-gray-100 text-gray-500' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-gray-50 text-gray-400'}`}>{i + 1}</span>
                     </td>
-                    <td className="py-2.5 pr-4 font-medium text-white">{a.name}</td>
-                    <td className="py-2.5 pr-4 text-slate-300">{a.total}</td>
-                    <td className="py-2.5 pr-4 text-emerald-400">{a.validados}</td>
-                    <td className="py-2.5 pr-4 text-amber-400">{a.pendencias}</td>
-                    <td className="py-2.5 pr-4">
-                      <span className={`font-medium ${taxaErro > 20 ? 'text-red-400' : taxaErro > 10 ? 'text-amber-400' : 'text-emerald-400'}`}>{taxaErro}%</span>
-                    </td>
-                    <td className="py-2.5">
+                    <td className="py-3 pr-4 font-semibold text-gray-800">{a.name}</td>
+                    <td className="py-3 pr-4 text-gray-600">{a.total}</td>
+                    <td className="py-3 pr-4 font-medium text-emerald-600">{a.validados}</td>
+                    <td className="py-3 pr-4 font-medium text-amber-500">{a.pendencias}</td>
+                    <td className="py-3 pr-4"><span className={`font-medium ${taxaErro > 20 ? 'text-red-500' : taxaErro > 10 ? 'text-amber-500' : 'text-emerald-600'}`}>{taxaErro}%</span></td>
+                    <td className="py-3">
                       <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-800">
-                          <div className={`h-full rounded-full ${a.eficiencia >= meta ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${a.eficiencia}%` }} />
+                        <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-100">
+                          <div className={`h-full rounded-full ${a.eficiencia >= meta ? 'bg-emerald-500' : 'bg-amber-400'}`} style={{ width: `${a.eficiencia}%` }} />
                         </div>
-                        <span className="text-xs font-semibold text-white">{a.eficiencia}%</span>
+                        <span className="text-xs font-semibold text-gray-700">{a.eficiencia}%</span>
                       </div>
                     </td>
                   </tr>
                 );
               })}
-              {allAtendentes.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-slate-500">Nenhum dado disponível</td></tr>}
+              {allAtendentes.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-gray-400">Nenhum dado disponível</td></tr>}
             </tbody>
           </table>
         </div>
