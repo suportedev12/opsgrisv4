@@ -1,15 +1,23 @@
 import { useMemo } from 'react';
 import type { CadastroRealizado, ChecklistOperacional } from '@/types';
 
-interface KPIData {
-  totalCadastros: number;
+interface CadastroKPI {
+  total: number;
   validados: number;
   pendencias: number;
   recusados: number;
   andamento: number;
   eficiencia: number;
   tempoMedioMin: number;
-  slaScore: number;
+}
+
+interface ChecklistKPI {
+  total: number;
+  validados: number;
+  pendencias: number;
+  andamento: number;
+  eficiencia: number;
+  vencidos: number;
 }
 
 function calcMinutes(inicio: string | null, fim: string | null): number | null {
@@ -20,7 +28,7 @@ function calcMinutes(inicio: string | null, fim: string | null): number | null {
   return diff > 0 ? diff : null;
 }
 
-export function useCadastroKPIs(records: CadastroRealizado[]): KPIData {
+export function useCadastroKPIs(records: CadastroRealizado[]): CadastroKPI {
   return useMemo(() => {
     const total = records.length;
     const validados = records.filter(r => r.status === 'Validado').length;
@@ -30,20 +38,17 @@ export function useCadastroKPIs(records: CadastroRealizado[]): KPIData {
     const eficiencia = total > 0 ? Math.round((validados / total) * 100) : 0;
 
     const tempos = records
-      .map(r => calcMinutes(r.horario_inicio, r.horario_fim))
-      .filter((t): t is number => t !== null);
+      .map(r => r.sla_minutes ?? calcMinutes(r.horario_inicio, r.horario_fim))
+      .filter((t): t is number => t !== null && t > 0);
     const tempoMedioMin = tempos.length > 0
       ? Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length)
       : 0;
 
-    const slaTarget = 10;
-    const slaScore = tempoMedioMin === 0 ? 100 : Math.max(0, Math.round(100 - ((tempoMedioMin - slaTarget) / slaTarget) * 50));
-
-    return { totalCadastros: total, validados, pendencias, recusados, andamento, eficiencia, tempoMedioMin, slaScore };
+    return { total, validados, pendencias, recusados, andamento, eficiencia, tempoMedioMin };
   }, [records]);
 }
 
-export function useChecklistKPIs(records: ChecklistOperacional[]) {
+export function useChecklistKPIs(records: ChecklistOperacional[]): ChecklistKPI {
   return useMemo(() => {
     const total = records.length;
     const validados = records.filter(r => r.status === 'Validado').length;
@@ -52,14 +57,16 @@ export function useChecklistKPIs(records: ChecklistOperacional[]) {
     const eficiencia = total > 0 ? Math.round((validados / total) * 100) : 0;
 
     const today = new Date().toISOString().split('T')[0];
-    const vencidos = records.filter(r => r.vencimento_checklist && r.vencimento_checklist < today && r.status !== 'Validado').length;
+    const vencidos = records.filter(r =>
+      r.vencimento_checklist && r.vencimento_checklist < today && r.status !== 'Validado'
+    ).length;
 
     return { total, validados, pendencias, andamento, eficiencia, vencidos };
   }, [records]);
 }
 
 export function byTurno<T extends { turno: string | null }>(records: T[]) {
-  const map: Record<string, T[]> = { '1T': [], '2T': [], '3T': [] };
+  const map: Record<string, T[]> = {};
   records.forEach(r => {
     const t = r.turno ?? 'Outros';
     if (!map[t]) map[t] = [];
@@ -80,4 +87,37 @@ export function byAtendente<T extends { atendente: string | null; status: string
   return Object.entries(map)
     .map(([name, data]) => ({ name, ...data, eficiencia: data.total > 0 ? Math.round((data.validados / data.total) * 100) : 0 }))
     .sort((a, b) => b.total - a.total);
+}
+
+export function byWeek<T extends { semana: string | null }>(records: T[]) {
+  const map: Record<string, number> = {};
+  records.forEach(r => {
+    const s = r.semana ?? 'Sem semana';
+    map[s] = (map[s] ?? 0) + 1;
+  });
+  return Object.entries(map)
+    .map(([semana, total]) => ({ semana, total }))
+    .sort((a, b) => a.semana.localeCompare(b.semana));
+}
+
+export function byMonth<T extends { mes: string | null }>(records: T[]) {
+  const map: Record<string, number> = {};
+  records.forEach(r => {
+    const m = r.mes ?? 'Sem mês';
+    map[m] = (map[m] ?? 0) + 1;
+  });
+  return Object.entries(map)
+    .map(([mes, total]) => ({ mes, total }))
+    .sort((a, b) => a.mes.localeCompare(b.mes));
+}
+
+export function byDay<T extends { data: string | null }>(records: T[]) {
+  const map: Record<string, number> = {};
+  records.forEach(r => {
+    const d = r.data ?? '';
+    if (d) map[d] = (map[d] ?? 0) + 1;
+  });
+  return Object.entries(map)
+    .map(([data, total]) => ({ data, total }))
+    .sort((a, b) => a.data.localeCompare(b.data));
 }

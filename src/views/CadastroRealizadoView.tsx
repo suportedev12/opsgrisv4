@@ -33,9 +33,9 @@ function classifBadge(c: string | null) {
 
 const EMPTY = {
   mes: '', turno: '', operacao: '', classificacao: '', data: '', horario_inicio: '',
-  pis: '', motorista: '', placa_cavalo: '', tipo_veiculo: '', ano_cavalo: '',
-  placa_carreta: '', ano_carreta: '', atendente: '', tentativa_1: '', tentativa_2: '',
-  tentativa_3: '', tipo: '', status: 'Andamento', pendencia_recusa: '', horario_fim: '', obs: '',
+  pis: '', motorista: '', placa_cavalo: '', tipo: '', ano_cavalo: '',
+  placa_carreta: '', ano_carreta: '', atendente: '', tentativa1: '', tentativa2: '',
+  tentativa3: '', tipo_cadastro: '', status: 'Andamento', pendencia_recusa: '', horario_fim: '', obs: '', semana: '',
 };
 type FormType = typeof EMPTY;
 
@@ -50,24 +50,31 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'pis', label: 'PIS' },
   { key: 'motorista', label: 'Motorista' },
   { key: 'placa_cavalo', label: 'Placa Cavalo' },
-  { key: 'tipo_veiculo', label: 'Tipo Veículo' },
+  { key: 'tipo', label: 'Tipo Veículo' },
   { key: 'ano_cavalo', label: 'Ano Cavalo' },
   { key: 'placa_carreta', label: 'Placa Carreta' },
   { key: 'ano_carreta', label: 'Ano Carreta' },
   { key: 'atendente', label: 'Atendente' },
-  { key: 'tentativa_1', label: '1ª Tentativa' },
-  { key: 'tentativa_2', label: '2ª Tentativa' },
-  { key: 'tentativa_3', label: '3ª Tentativa' },
-  { key: 'tipo', label: 'Tipo' },
+  { key: 'tentativa1', label: '1ª Tentativa' },
+  { key: 'tentativa2', label: '2ª Tentativa' },
+  { key: 'tentativa3', label: '3ª Tentativa' },
+  { key: 'tipo_cadastro', label: 'Tipo de Cadastro' },
+  { key: 'semana', label: 'Semana' },
   { key: 'pendencia_recusa', label: 'Pendência / Recusa', span: true },
   { key: 'obs', label: 'OBS', span: true },
 ];
 
 const inputCls = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-[#F47920] focus:outline-none focus:ring-1 focus:ring-[#F47920]/20';
 
-interface Props { filters: Filters; onFiltersChange: (f: Filters) => void; showNewForm?: boolean; onNewFormHandled?: () => void; }
+interface Props {
+  filters: Filters;
+  onFiltersChange: (f: Filters) => void;
+  showNewForm?: boolean;
+  onNewFormHandled?: () => void;
+  canEdit?: boolean;
+}
 
-export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, onNewFormHandled }: Props) {
+export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, onNewFormHandled, canEdit = true }: Props) {
   const [records, setRecords] = useState<CadastroRealizado[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<CadastroRealizado | null>(null);
@@ -76,7 +83,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from('cadastro_realizado').select('*').order('created_at', { ascending: false });
+    const { data } = await supabase.from('cadastro_records').select('*').order('created_at', { ascending: false });
     setRecords(data ?? []);
     setLoading(false);
   }, []);
@@ -92,29 +99,33 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
 
   const save = async () => {
     if (editing) {
-      await supabase.from('cadastro_realizado').update({ ...form, updated_at: new Date().toISOString() }).eq('id', editing.id);
+      await supabase.from('cadastro_records').update(form).eq('id', editing.id);
     } else {
-      await supabase.from('cadastro_realizado').insert(form);
+      await supabase.from('cadastro_records').insert(form);
     }
     setShowForm(false); setEditing(null); setForm(EMPTY); await load();
   };
 
   const remove = async (id: string) => {
     if (!window.confirm('Remover este registro?')) return;
-    await supabase.from('cadastro_realizado').delete().eq('id', id);
+    await supabase.from('cadastro_records').delete().eq('id', id);
     await load();
   };
 
   const startEdit = (r: CadastroRealizado) => {
     setEditing(r);
-    const { id, created_at, updated_at, ...rest } = r;
+    const { id, user_id, created_at, sla_minutes, ...rest } = r;
     setForm({ ...EMPTY, ...Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, v ?? ''])) } as FormType);
     setShowForm(true);
   };
 
   const startNew = () => { setEditing(null); setForm(EMPTY); setShowForm(true); };
 
-  const fmtDate = (d: string | null) => d ? new Date(d + 'T00:00').toLocaleDateString('pt-BR') : '-';
+  const fmtDate = (d: string | null) => {
+    if (!d) return '-';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return new Date(d + 'T00:00').toLocaleDateString('pt-BR');
+    return d;
+  };
 
   if (loading) return <div className="flex h-64 items-center justify-center"><div className="h-7 w-7 animate-spin rounded-full border-2 border-gray-200 border-t-[#F47920]" /></div>;
 
@@ -129,12 +140,14 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
           <h2 className="mt-0.5 text-2xl font-bold text-gray-900">Cadastro Realizado</h2>
           <p className="mt-0.5 text-sm text-gray-500">Controle de motoristas, veículos, carretas, tentativas de validação e status de liberação.</p>
         </div>
-        <button
-          onClick={startNew}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-[#F47920] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#F47920]/20 transition-colors hover:bg-[#d96a15]"
-        >
-          <Plus className="h-4 w-4" /> + NOVO CADASTRO
-        </button>
+        {canEdit && (
+          <button
+            onClick={startNew}
+            className="flex shrink-0 items-center gap-2 rounded-lg bg-[#F47920] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#F47920]/20 transition-colors hover:bg-[#d96a15]"
+          >
+            <Plus className="h-4 w-4" /> + NOVO CADASTRO
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -156,7 +169,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Tipo</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Pendência / Recusa</th>
-                <th className="whitespace-nowrap px-4 py-3 font-semibold">Ações</th>
+                {canEdit && <th className="whitespace-nowrap px-4 py-3 font-semibold">Ações</th>}
               </tr>
             </thead>
             <tbody>
@@ -185,7 +198,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                   <td className="px-4 py-4 align-top">
                     <p className="font-medium text-gray-800">{r.placa_cavalo ?? '-'}</p>
                     <p className="text-xs text-gray-500">
-                      {[r.tipo_veiculo, r.ano_cavalo].filter(Boolean).join(' / ')}
+                      {[r.tipo, r.ano_cavalo].filter(Boolean).join(' / ')}
                       {r.placa_carreta && <> / {r.placa_carreta}{r.ano_carreta ? ' / ' + r.ano_carreta : ''}</>}
                     </p>
                   </td>
@@ -193,12 +206,12 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                     <p className="text-gray-700">{r.atendente ?? '-'}</p>
                   </td>
                   <td className="px-4 py-4 align-top whitespace-nowrap">
-                    <p className="text-xs text-gray-600">1ª: {r.tentativa_1 || '-'}</p>
-                    <p className="text-xs text-gray-600">2ª: {r.tentativa_2 || '-'}</p>
-                    <p className="text-xs text-gray-600">3ª: {r.tentativa_3 || '-'}</p>
+                    <p className="text-xs text-gray-600">1ª: {r.tentativa1 || '-'}</p>
+                    <p className="text-xs text-gray-600">2ª: {r.tentativa2 || '-'}</p>
+                    <p className="text-xs text-gray-600">3ª: {r.tentativa3 || '-'}</p>
                   </td>
                   <td className="px-4 py-4 align-top">
-                    <p className="text-gray-700">{r.tipo ?? '-'}</p>
+                    <p className="text-gray-700">{r.tipo_cadastro ?? '-'}</p>
                   </td>
                   <td className="px-4 py-4 align-top">
                     <StatusBadge status={r.status} />
@@ -207,16 +220,18 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                     <p className="text-sm text-gray-700">{r.pendencia_recusa || '-'}</p>
                     {r.obs && <p className="mt-0.5 text-xs text-gray-400 line-clamp-2">OBS: {r.obs}</p>}
                   </td>
-                  <td className="px-4 py-4 align-top">
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"><Pencil className="h-4 w-4" /></button>
-                      <button onClick={() => remove(r.id)} className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
-                    </div>
-                  </td>
+                  {canEdit && (
+                    <td className="px-4 py-4 align-top">
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"><Pencil className="h-4 w-4" /></button>
+                        <button onClick={() => remove(r.id)} className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={11} className="py-12 text-center text-gray-400">Nenhum registro encontrado. Crie o primeiro com "+ NOVO CADASTRO".</td></tr>
+                <tr><td colSpan={canEdit ? 11 : 10} className="py-12 text-center text-gray-400">Nenhum registro encontrado.</td></tr>
               )}
             </tbody>
           </table>
@@ -225,7 +240,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
       </div>
 
       {/* Modal form */}
-      {showForm && (
+      {showForm && canEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl">
             <div className="sticky top-0 flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4">

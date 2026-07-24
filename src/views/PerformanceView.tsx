@@ -26,8 +26,8 @@ export function PerformanceView({ filters, onFiltersChange }: { filters: Filters
   useEffect(() => {
     (async () => {
       const [{ data: cad }, { data: chk }] = await Promise.all([
-        supabase.from('cadastro_realizado').select('*').order('created_at', { ascending: false }),
-        supabase.from('checklist_operacional').select('*').order('created_at', { ascending: false }),
+        supabase.from('cadastro_records').select('*').order('created_at', { ascending: false }),
+        supabase.from('checklist_records').select('*').order('created_at', { ascending: false }),
       ]);
       setCadastros(cad ?? []);
       setChecklists(chk ?? []);
@@ -55,7 +55,7 @@ export function PerformanceView({ filters, onFiltersChange }: { filters: Filters
     .filter(r => r.atendente)
     .reduce((acc, r) => {
       const a = r.atendente!;
-      const min = calcMinutes(r.horario_inicio, r.horario_fim);
+      const min = r.sla_minutes ?? calcMinutes(r.horario_inicio, r.horario_fim);
       if (min !== null) {
         if (!acc[a]) acc[a] = { sum: 0, count: 0 };
         acc[a].sum += min; acc[a].count++;
