@@ -6,11 +6,19 @@ interface FilterBarProps {
   onChange: (filters: Filters) => void;
   atendentes: string[];
   placeholder?: string;
+  statuses?: { value: string; label: string }[];
 }
 
 const inputCls = 'rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400 shadow-sm focus:border-[#F47920] focus:outline-none focus:ring-1 focus:ring-[#F47920]/20';
 
-export function FilterBar({ filters, onChange, atendentes, placeholder = 'Pesquisar por motorista, placa, PIS, operação...' }: FilterBarProps) {
+const DEFAULT_STATUSES = [
+  { value: 'Validado', label: 'Validado' },
+  { value: 'Pendência', label: 'Pendência' },
+  { value: 'Recusado', label: 'Recusado' },
+  { value: 'Andamento', label: 'Andamento' },
+];
+
+export function FilterBar({ filters, onChange, atendentes, placeholder = 'Pesquisar por motorista, placa, PIS, operação...', statuses = DEFAULT_STATUSES }: FilterBarProps) {
   const update = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
 
   return (
@@ -27,10 +35,7 @@ export function FilterBar({ filters, onChange, atendentes, placeholder = 'Pesqui
 
       <select value={filters.status} onChange={e => update({ status: e.target.value })} className={inputCls}>
         <option value="">Todos os Status</option>
-        <option value="Validado">Validado</option>
-        <option value="Pendência">Pendência</option>
-        <option value="Recusado">Recusado</option>
-        <option value="Andamento">Andamento</option>
+        {statuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
       </select>
 
       <select value={filters.turno} onChange={e => update({ turno: e.target.value })} className={inputCls}>

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { LayoutDashboard, FileCheck, Truck, TrendingUp, Plus, Users, LogOut, ShieldCheck, Menu, X, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, FileCheck, Truck, TrendingUp, Plus, Users, LogOut, ShieldCheck, Menu, X, ChevronRight, Target } from 'lucide-react';
 import type { ActiveTab, Filters } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { Login } from '@/views/Login';
@@ -8,6 +8,7 @@ import { CadastroRealizadoView } from '@/views/CadastroRealizadoView';
 import { ChecklistView } from '@/views/ChecklistView';
 import { PerformanceView } from '@/views/PerformanceView';
 import { OperadoresView } from '@/views/OperadoresView';
+import { MetasView } from '@/views/MetasView';
 
 const EMPTY_FILTERS: Filters = { turno: '', atendente: '', status: '', dataInicio: '', dataFim: '', search: '' };
 
@@ -36,6 +37,7 @@ function App() {
     }
     if (isManager) {
       list.push({ id: 'performance', label: 'Performance', icon: TrendingUp });
+      list.push({ id: 'metas', label: 'Metas', icon: Target });
       list.push({ id: 'operadores', label: 'Operadores', icon: Users });
     }
     return list;
@@ -96,7 +98,7 @@ function App() {
         {/* Brand */}
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 overflow-hidden shrink-0">
-            <img src="/losung.png" alt="Lösung Express" className="h-8 w-auto object-contain" />
+            <img src="/losung copy.png" alt="Lösung Express" className="h-8 w-auto object-contain" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
@@ -203,7 +205,7 @@ function App() {
         <main className="flex-1 overflow-x-hidden p-4 lg:p-6">
           <div className="mx-auto max-w-[1280px]">
             {effectiveActive === 'dashboard' && (isManager || profile?.can_view_dashboard) && (
-              <Dashboard filters={filters} onFiltersChange={setFilters} onNavigate={(tab) => setActive(tab)} />
+              <Dashboard filters={filters} onFiltersChange={setFilters} onNavigate={(tab) => setActive(tab)} profile={profile} isManager={isManager} />
             )}
             {effectiveActive === 'cadastro' && (isManager || profile?.can_add_cadastro) && (
               <CadastroRealizadoView
@@ -212,6 +214,7 @@ function App() {
                 showNewForm={showNewForm && effectiveActive === 'cadastro'}
                 onNewFormHandled={() => setNewHandled(t => t + 1)}
                 canEdit={!!canEditCadastro}
+                profile={profile}
               />
             )}
             {effectiveActive === 'checklist' && (isManager || profile?.can_add_checklist) && (
@@ -221,10 +224,14 @@ function App() {
                 showNewForm={showNewForm && effectiveActive === 'checklist'}
                 onNewFormHandled={() => setNewHandled(t => t + 1)}
                 canEdit={!!canEditChecklist}
+                profile={profile}
               />
             )}
             {effectiveActive === 'performance' && isManager && (
               <PerformanceView filters={filters} onFiltersChange={setFilters} />
+            )}
+            {effectiveActive === 'metas' && isManager && (
+              <MetasView profile={profile} />
             )}
             {effectiveActive === 'operadores' && isManager && (
               <OperadoresView />

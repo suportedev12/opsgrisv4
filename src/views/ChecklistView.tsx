@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import type { ChecklistOperacional, Filters } from '@/types';
+import type { ChecklistOperacional, Filters, UserProfile } from '@/types';
 import { filterChecklists, getUniqueAtendentes } from '@/utils/filters';
 import { FilterBar } from '@/components/FilterBar';
-import { Plus, Pencil, Trash2, Save, X, Truck } from 'lucide-react';
+import { Pencil, Trash2, Save, X, Truck } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; icon: ReactNode }> = {
@@ -72,9 +72,10 @@ interface Props {
   showNewForm?: boolean;
   onNewFormHandled?: () => void;
   canEdit?: boolean;
+  profile?: UserProfile | null;
 }
 
-export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewFormHandled, canEdit = true }: Props) {
+export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewFormHandled, canEdit = true, profile }: Props) {
   const [records, setRecords] = useState<ChecklistOperacional[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ChecklistOperacional | null>(null);
@@ -94,8 +95,10 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
     if (showNewForm) { startNew(); onNewFormHandled?.(); }
   }, [showNewForm]);
 
-  const filtered = filterChecklists(records, filters);
-  const atendentes = getUniqueAtendentes([], records);
+  const isManager = profile?.is_admin || profile?.can_manage_users;
+  const scopedRecords = isManager ? records : records.filter(r => r.user_id === profile?.id || r.atendente === profile?.nome);
+  const filtered = filterChecklists(scopedRecords, filters);
+  const atendentes = isManager ? getUniqueAtendentes([], records) : [];
   const today = new Date().toISOString().split('T')[0];
 
   const save = async () => {
@@ -141,18 +144,10 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
           <h2 className="mt-0.5 text-2xl font-bold text-gray-900">Checklist Operacional</h2>
           <p className="mt-0.5 text-sm text-gray-500">Protocolos ETA, origens, motoristas, verificação de frota e controle de vencimentos.</p>
         </div>
-        {canEdit && (
-          <button
-            onClick={startNew}
-            className="flex shrink-0 items-center gap-2 rounded-lg bg-[#F47920] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#F47920]/20 transition-colors hover:bg-[#d96a15]"
-          >
-            <Plus className="h-4 w-4" /> + NOVO CHECKLIST
-          </button>
-        )}
       </div>
 
       {/* Filters */}
-      <FilterBar filters={filters} onChange={onFiltersChange} atendentes={atendentes} placeholder="Pesquisar por motorista, protocolo, placa..." />
+      <FilterBar filters={filters} onChange={onFiltersChange} atendentes={atendentes} placeholder="Pesquisar por motorista, protocolo, placa..." statuses={[{ value: 'Andamento', label: 'Andamento' }, { value: 'Validado', label: 'Validado' }, { value: 'Pendência', label: 'Pendência' }]} />
 
       {/* Table */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">

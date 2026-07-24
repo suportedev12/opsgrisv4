@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import type { CadastroRealizado, ChecklistOperacional, Filters, Period } from '@/types';
+import type { CadastroRealizado, ChecklistOperacional, Filters, Period, UserProfile, Meta } from '@/types';
 import { filterCadastros, filterChecklists, getUniqueAtendentes } from '@/utils/filters';
 import { useCadastroKPIs, useChecklistKPIs, byTurno, byAtendente, byWeek, byMonth } from '@/hooks/useKPIs';
 import { KpiCard } from '@/components/KpiCard';
@@ -8,7 +8,7 @@ import { Panel } from '@/components/Panel';
 import { BarChart, ProductivityBarChart, DonutChart, LineChart } from '@/components/Charts';
 import {
   FileCheck, Truck, AlertTriangle, Users, Calendar,
-  Clock, CheckCircle2, XCircle, LayoutGrid,
+  Clock, CheckCircle2, XCircle, LayoutGrid, Target, Trophy,
 } from 'lucide-react';
 
 /* ─── Period helpers ─── */
@@ -44,11 +44,14 @@ interface Props {
   filters: Filters;
   onFiltersChange: (f: Filters) => void;
   onNavigate?: (tab: 'cadastro' | 'checklist') => void;
+  profile?: UserProfile | null;
+  isManager?: boolean;
 }
 
-export function Dashboard({ filters, onFiltersChange, onNavigate }: Props) {
+export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isManager }: Props) {
   const [cadastros, setCadastros] = useState<CadastroRealizado[]>([]);
   const [checklists, setChecklists] = useState<ChecklistOperacional[]>([]);
+  const [metas, setMetas] = useState<Meta[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('mes');
   const [calStart, setCalStart] = useState('');
@@ -57,12 +60,14 @@ export function Dashboard({ filters, onFiltersChange, onNavigate }: Props) {
 
   useEffect(() => {
     (async () => {
-      const [{ data: cad }, { data: chk }] = await Promise.all([
+      const [{ data: cad }, { data: chk }, { data: mt }] = await Promise.all([
         supabase.from('cadastro_records').select('*').order('created_at', { ascending: false }),
         supabase.from('checklist_records').select('*').order('created_at', { ascending: false }),
+        supabase.from('metas').select('*').eq('ativo', true).order('created_at', { ascending: false }),
       ]);
       setCadastros(cad ?? []);
       setChecklists(chk ?? []);
+      setMetas(mt ?? []);
       setLoading(false);
     })();
   }, []);
@@ -75,9 +80,12 @@ export function Dashboard({ filters, onFiltersChange, onNavigate }: Props) {
     return { ...filters, dataInicio: filters.dataInicio || start, dataFim: filters.dataFim || end };
   }, [filters, period, calStart, calEnd]);
 
-  const filteredCad = filterCadastros(cadastros, effectiveFilters);
-  const filteredChk = filterChecklists(checklists, effectiveFilters);
-  const atendentes = getUniqueAtendentes(cadastros, checklists);
+  const isManagerUser = isManager;
+  const scopedCad = isManagerUser ? cadastros : cadastros.filter(r => r.user_id === profile?.id || r.atendente === profile?.nome);
+  const scopedChk = isManagerUser ? checklists : checklists.filter(r => r.user_id === profile?.id || r.atendente === profile?.nome);
+  const filteredCad = filterCadastros(scopedCad, effectiveFilters);
+  const filteredChk = filterChecklists(scopedChk, effectiveFilters);
+  const atendentes = isManagerUser ? getUniqueAtendentes(cadastros, checklists) : [];
 
   const cadKpis = useCadastroKPIs(filteredCad);
   const chkKpis = useChecklistKPIs(filteredChk);
@@ -151,15 +159,22 @@ export function Dashboard({ filters, onFiltersChange, onNavigate }: Props) {
             <h1 className="mt-1.5 text-2xl font-bold text-white">Dashboard de Desempenho Operacional</h1>
             <p className="mt-1 text-sm text-gray-400">Selecione a base para visualizar os indicadores detalhados.</p>
           </div>
-          <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-            <Users className="h-7 w-7 text-[#F47920]" />
-            <div className="text-left">
-              <p className="text-[10px] uppercase tracking-wider text-gray-400">Operadores Ativos</p>
-              <p className="text-lg font-bold text-white">{atendentes.length}</p>
+          {isManagerUser && (
+            <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+              <Users className="h-7 w-7 text-[#F47920]" />
+              <div className="text-left">
+                <p className="text-[10px] uppercase tracking-wider text-gray-400">Operadores Ativos</p>
+                <p className="text-lg font-bold text-white">{atendentes.length}</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
+
+      {/* ─── Goal widget ─── */}
+      {metas.length > 0 && (
+        <GoalWidget metas={metas} profile={profile} isManager={!!isManager} cadastros={filteredCad} checklists={filteredChk} />
+      )}
 
       {/* ─── Base selector tabs ─── */}
       <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-1.5 shadow-sm">
@@ -212,10 +227,12 @@ export function Dashboard({ filters, onFiltersChange, onNavigate }: Props) {
             <option value="Tarde">Tarde</option>
             <option value="Noite">Noite</option>
           </select>
-          <select value={filters.atendente} onChange={e => onFiltersChange({ ...filters, atendente: e.target.value })} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 shadow-sm focus:border-[#F47920] focus:outline-none">
-            <option value="">Operador</option>
-            {atendentes.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
+          {isManagerUser && (
+            <select value={filters.atendente} onChange={e => onFiltersChange({ ...filters, atendente: e.target.value })} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 shadow-sm focus:border-[#F47920] focus:outline-none">
+              <option value="">Operador</option>
+              {atendentes.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          )}
           <select value={filters.status} onChange={e => onFiltersChange({ ...filters, status: e.target.value })} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 shadow-sm focus:border-[#F47920] focus:outline-none">
             <option value="">Status</option>
             <option value="Validado">Validado</option>
@@ -244,19 +261,21 @@ export function Dashboard({ filters, onFiltersChange, onNavigate }: Props) {
 
           {/* Productivity + Status donut */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Panel title="Produtividade por Operador" subtitle="Cadastros x Checklists por operador" className="lg:col-span-2" action={<Users className="h-4 w-4 text-[#F47920]" />}>
-              {productivityData.length > 0 ? (
-                <>
-                  <ProductivityBarChart data={productivityData} height={200} />
-                  <div className="mt-3 flex items-center justify-center gap-6 text-xs text-gray-500">
-                    <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#F47920]" /> Cadastros</span>
-                    <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#334155]" /> Checklists</span>
-                  </div>
-                </>
-              ) : <EmptyChart />}
-            </Panel>
+            {isManagerUser && (
+              <Panel title="Produtividade por Operador" subtitle="Cadastros x Checklists por operador" className="lg:col-span-2" action={<Users className="h-4 w-4 text-[#F47920]" />}>
+                {productivityData.length > 0 ? (
+                  <>
+                    <ProductivityBarChart data={productivityData} height={200} />
+                    <div className="mt-3 flex items-center justify-center gap-6 text-xs text-gray-500">
+                      <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#F47920]" /> Cadastros</span>
+                      <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#334155]" /> Checklists</span>
+                    </div>
+                  </>
+                ) : <EmptyChart />}
+              </Panel>
+            )}
 
-            <Panel title="Status Consolidado" subtitle="Distribuição geral">
+            <Panel title="Status Consolidado" subtitle="Distribuição geral" className={isManagerUser ? '' : 'lg:col-span-3'}>
               <div className="flex flex-col items-center gap-4">
                 <DonutChart
                   segments={[
@@ -326,24 +345,26 @@ export function Dashboard({ filters, onFiltersChange, onNavigate }: Props) {
 
           {/* Operador + Mensal */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Panel title="Volume por Operador" subtitle="Cadastros realizados" action={<Users className="h-4 w-4 text-[#F47920]" />}>
-              {cadByAtend.length > 0 ? (
-                <div className="space-y-2.5">
-                  {cadByAtend.slice(0, 8).map(a => (
-                    <div key={a.name}>
-                      <div className="mb-1 flex items-center justify-between text-sm">
-                        <span className="font-medium text-gray-700">{a.name}</span>
-                        <span className="text-gray-500">{a.total} <span className="ml-1.5 text-xs font-semibold text-emerald-600">{a.eficiencia}%</span></span>
+            {isManagerUser && (
+              <Panel title="Volume por Operador" subtitle="Cadastros realizados" action={<Users className="h-4 w-4 text-[#F47920]" />}>
+                {cadByAtend.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {cadByAtend.slice(0, 8).map(a => (
+                      <div key={a.name}>
+                        <div className="mb-1 flex items-center justify-between text-sm">
+                          <span className="font-medium text-gray-700">{a.name}</span>
+                          <span className="text-gray-500">{a.total} <span className="ml-1.5 text-xs font-semibold text-emerald-600">{a.eficiencia}%</span></span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                          <div className="h-full rounded-full bg-[#F47920]" style={{ width: `${(a.total / Math.max(...cadByAtend.map(x => x.total), 1)) * 100}%` }} />
+                        </div>
                       </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-                        <div className="h-full rounded-full bg-[#F47920]" style={{ width: `${(a.total / Math.max(...cadByAtend.map(x => x.total), 1)) * 100}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : <EmptyChart />}
-            </Panel>
-            <Panel title="Cadastros por Mês" subtitle="Evolução mensal">
+                    ))}
+                  </div>
+                ) : <EmptyChart />}
+              </Panel>
+            )}
+            <Panel title="Cadastros por Mês" subtitle="Evolução mensal" className={isManagerUser ? '' : 'lg:col-span-2'}>
               {cadMes.length > 1 ? <LineChart data={cadMes} color="#F47920" /> : <EmptyChart />}
             </Panel>
           </div>
@@ -403,24 +424,26 @@ export function Dashboard({ filters, onFiltersChange, onNavigate }: Props) {
 
           {/* Operador + Mensal */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Panel title="Volume por Operador" subtitle="Checklists realizados" action={<Users className="h-4 w-4 text-[#F47920]" />}>
-              {chkByAtend.length > 0 ? (
-                <div className="space-y-2.5">
-                  {chkByAtend.slice(0, 8).map(a => (
-                    <div key={a.name}>
-                      <div className="mb-1 flex items-center justify-between text-sm">
-                        <span className="font-medium text-gray-700">{a.name}</span>
-                        <span className="text-gray-500">{a.total} <span className="ml-1.5 text-xs font-semibold text-emerald-600">{a.eficiencia}%</span></span>
+            {isManagerUser && (
+              <Panel title="Volume por Operador" subtitle="Checklists realizados" action={<Users className="h-4 w-4 text-[#F47920]" />}>
+                {chkByAtend.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {chkByAtend.slice(0, 8).map(a => (
+                      <div key={a.name}>
+                        <div className="mb-1 flex items-center justify-between text-sm">
+                          <span className="font-medium text-gray-700">{a.name}</span>
+                          <span className="text-gray-500">{a.total} <span className="ml-1.5 text-xs font-semibold text-emerald-600">{a.eficiencia}%</span></span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                          <div className="h-full rounded-full bg-[#334155]" style={{ width: `${(a.total / Math.max(...chkByAtend.map(x => x.total), 1)) * 100}%` }} />
+                        </div>
                       </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-                        <div className="h-full rounded-full bg-[#334155]" style={{ width: `${(a.total / Math.max(...chkByAtend.map(x => x.total), 1)) * 100}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : <EmptyChart />}
-            </Panel>
-            <Panel title="Checklists por Mês" subtitle="Evolução mensal">
+                    ))}
+                  </div>
+                ) : <EmptyChart />}
+              </Panel>
+            )}
+            <Panel title="Checklists por Mês" subtitle="Evolução mensal" className={isManagerUser ? '' : 'lg:col-span-2'}>
               {chkMes.length > 1 ? <LineChart data={chkMes} color="#334155" /> : <EmptyChart />}
             </Panel>
           </div>
@@ -463,4 +486,123 @@ function CalendarGrid({ days, maxCal }: { days: { date: string; label: string; t
 
 function EmptyChart() {
   return <div className="flex h-32 items-center justify-center text-sm text-gray-400">Sem dados no período selecionado</div>;
+}
+
+/* ─── Goal widget ─── */
+function getCurrentWeekRef(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const start = new Date(year, 0, 1);
+  const diff = (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+  const week = Math.ceil((diff + start.getDay() + 1) / 7);
+  return `${year}-W${String(week).padStart(2, '0')}`;
+}
+
+function getCurrentMonthRef(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function GoalWidget({
+  metas, profile, isManager, cadastros, checklists,
+}: {
+  metas: Meta[];
+  profile: UserProfile | null;
+  isManager: boolean;
+  cadastros: CadastroRealizado[];
+  checklists: ChecklistOperacional[];
+}) {
+  const weekRef = getCurrentWeekRef();
+  const monthRef = getCurrentMonthRef();
+
+  const relevantMetas = metas.filter(m => {
+    if (!m.ativo) return false;
+    if (m.user_id === null) return true;
+    if (!isManager && m.user_id === profile?.id) return true;
+    if (isManager) return true;
+    return false;
+  });
+
+  const weeklyMetas = relevantMetas.filter(m => m.tipo_periodo === 'semana');
+  const monthlyMetas = relevantMetas.filter(m => m.tipo_periodo === 'mes');
+
+  const countForPeriod = (tipo: 'semana' | 'mes', periodo: string) => {
+    let start: Date, end: Date;
+    if (tipo === 'semana') {
+      const [y, w] = periodo.split('-W');
+      const year = parseInt(y);
+      const week = parseInt(w);
+      const jan1 = new Date(year, 0, 1);
+      const dayOffset = (week - 1) * 7;
+      start = new Date(jan1);
+      start.setDate(jan1.getDate() + dayOffset - jan1.getDay());
+      end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+    } else {
+      const [y, m] = periodo.split('-');
+      start = new Date(parseInt(y), parseInt(m) - 1, 1);
+      end = new Date(parseInt(y), parseInt(m), 0, 23, 59, 59, 999);
+    }
+    const inPeriod = (d: string | undefined) => {
+      if (!d) return false;
+      const date = new Date(d.length <= 10 ? d : d);
+      return date >= start && date <= end;
+    };
+    return cadastros.filter(r => inPeriod(r.data)).length + checklists.filter(r => inPeriod(r.data)).length;
+  };
+
+  const renderCard = (m: Meta, key: string) => {
+    const current = countForPeriod(m.tipo_periodo, m.periodo_referencia);
+    const pct = m.valor_alvo > 0 ? Math.min(100, Math.round((current / m.valor_alvo) * 100)) : 0;
+    const achieved = current >= m.valor_alvo && m.valor_alvo > 0;
+    return (
+      <div key={key} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${m.tipo_periodo === 'semana' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                {m.tipo_periodo === 'semana' ? 'Semanal' : 'Mensal'}
+              </span>
+              <span className="text-[10px] font-medium text-gray-400">{m.periodo_referencia}</span>
+            </div>
+            <h4 className="mt-1.5 text-sm font-bold text-gray-800">{m.titulo}</h4>
+            {m.descricao && <p className="mt-0.5 text-xs text-gray-500">{m.descricao}</p>}
+          </div>
+          {achieved ? <Trophy className="h-5 w-5 shrink-0 text-amber-500" /> : <Target className="h-5 w-5 shrink-0 text-[#F47920]" />}
+        </div>
+        <div className="mt-3">
+          <div className="mb-1 flex items-center justify-between text-xs">
+            <span className="font-semibold text-gray-600">{current} / {m.valor_alvo} registros</span>
+            <span className={`font-bold ${achieved ? 'text-emerald-600' : 'text-[#F47920]'}`}>{pct}%</span>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className={`h-full rounded-full transition-all duration-700 ${achieved ? 'bg-emerald-500' : 'bg-[#F47920]'}`} style={{ width: `${pct}%` }} />
+          </div>
+          {achieved && (
+            <p className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+              <CheckCircle2 className="h-3 w-3" /> Meta atingida! Parabéns!
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const cards: React.ReactNode[] = [];
+  const weekMatch = weeklyMetas.find(m => m.periodo_referencia === weekRef) ?? weeklyMetas[0];
+  const monthMatch = monthlyMetas.find(m => m.periodo_referencia === monthRef) ?? monthlyMetas[0];
+  if (weekMatch) cards.push(renderCard(weekMatch, `w-${weekMatch.id}`));
+  if (monthMatch) cards.push(renderCard(monthMatch, `m-${monthMatch.id}`));
+  if (cards.length === 0) return null;
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2">
+        <Target className="h-4 w-4 text-[#F47920]" />
+        <h3 className="text-sm font-bold text-gray-700">Minhas Metas</h3>
+      </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{cards}</div>
+    </div>
+  );
 }

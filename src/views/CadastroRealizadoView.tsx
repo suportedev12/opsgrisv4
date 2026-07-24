@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import type { CadastroRealizado, Filters } from '@/types';
+import type { CadastroRealizado, Filters, UserProfile } from '@/types';
 import { filterCadastros, getUniqueAtendentes } from '@/utils/filters';
 import { FilterBar } from '@/components/FilterBar';
-import { Plus, Pencil, Trash2, Save, X, FileCheck } from 'lucide-react';
+import { Pencil, Trash2, Save, X, FileCheck } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; icon: ReactNode }> = {
@@ -72,9 +72,10 @@ interface Props {
   showNewForm?: boolean;
   onNewFormHandled?: () => void;
   canEdit?: boolean;
+  profile?: UserProfile | null;
 }
 
-export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, onNewFormHandled, canEdit = true }: Props) {
+export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, onNewFormHandled, canEdit = true, profile }: Props) {
   const [records, setRecords] = useState<CadastroRealizado[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<CadastroRealizado | null>(null);
@@ -94,8 +95,10 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
     if (showNewForm) { startNew(); onNewFormHandled?.(); }
   }, [showNewForm]);
 
-  const filtered = filterCadastros(records, filters);
-  const atendentes = getUniqueAtendentes(records, []);
+  const isManager = profile?.is_admin || profile?.can_manage_users;
+  const scopedRecords = isManager ? records : records.filter(r => r.user_id === profile?.id || r.atendente === profile?.nome);
+  const filtered = filterCadastros(scopedRecords, filters);
+  const atendentes = isManager ? getUniqueAtendentes(records, []) : [];
 
   const save = async () => {
     if (editing) {
@@ -140,14 +143,6 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
           <h2 className="mt-0.5 text-2xl font-bold text-gray-900">Cadastro Realizado</h2>
           <p className="mt-0.5 text-sm text-gray-500">Controle de motoristas, veículos, carretas, tentativas de validação e status de liberação.</p>
         </div>
-        {canEdit && (
-          <button
-            onClick={startNew}
-            className="flex shrink-0 items-center gap-2 rounded-lg bg-[#F47920] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#F47920]/20 transition-colors hover:bg-[#d96a15]"
-          >
-            <Plus className="h-4 w-4" /> + NOVO CADASTRO
-          </button>
-        )}
       </div>
 
       {/* Filters */}

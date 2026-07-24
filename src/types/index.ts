@@ -71,7 +71,21 @@ export interface UserProfile {
   created_at: string;
 }
 
-export type ActiveTab = 'dashboard' | 'cadastro' | 'checklist' | 'performance' | 'operadores';
+export type ActiveTab = 'dashboard' | 'cadastro' | 'checklist' | 'performance' | 'operadores' | 'metas';
+
+export interface Meta {
+  id: string;
+  tipo_periodo: 'semana' | 'mes';
+  periodo_referencia: string;
+  titulo: string;
+  descricao: string | null;
+  valor_alvo: number;
+  user_id: string | null;
+  ativo: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export type Role = 'gerente' | 'operador';
 
