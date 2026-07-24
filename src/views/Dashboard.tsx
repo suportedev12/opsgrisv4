@@ -8,7 +8,7 @@ import { Panel } from '@/components/Panel';
 import { BarChart, ProductivityBarChart, DonutChart, LineChart } from '@/components/Charts';
 import {
   FileCheck, Truck, AlertTriangle, Users, Calendar,
-  Clock, CheckCircle2, XCircle, LayoutGrid, Target, Trophy,
+  Clock, CheckCircle2, XCircle, Target, Trophy,
 } from 'lucide-react';
 
 /* ─── Period helpers ─── */
@@ -29,13 +29,11 @@ const PERIODS: { id: Period; label: string }[] = [
   { id: 'semana', label: 'Semana' },
   { id: 'mes', label: 'Mês' },
   { id: 'trimestre', label: 'Trimestre' },
-  { id: 'ano', label: 'Ano' },
 ];
 
-type BaseView = 'consolidado' | 'cadastro' | 'checklist';
+type BaseView = 'cadastro' | 'checklist';
 
-const BASE_TABS: { id: BaseView; label: string; icon: typeof LayoutGrid }[] = [
-  { id: 'consolidado', label: 'Consolidado', icon: LayoutGrid },
+const BASE_TABS: { id: BaseView; label: string; icon: typeof FileCheck }[] = [
   { id: 'cadastro', label: 'Cadastro Realizado', icon: FileCheck },
   { id: 'checklist', label: 'Checklist', icon: Truck },
 ];
@@ -56,7 +54,7 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
   const [period, setPeriod] = useState<Period>('mes');
   const [calStart, setCalStart] = useState('');
   const [calEnd, setCalEnd] = useState('');
-  const [baseView, setBaseView] = useState<BaseView>('consolidado');
+  const [baseView, setBaseView] = useState<BaseView>('cadastro');
 
   useEffect(() => {
     (async () => {
@@ -126,7 +124,7 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
 
   /* ─── Calendar (14 days) ─── */
   const calData = useMemo(() => {
-    const source = baseView === 'checklist' ? filteredChk : baseView === 'cadastro' ? filteredCad : [...filteredCad, ...filteredChk];
+    const source = baseView === 'checklist' ? filteredChk : filteredCad;
     const map: Record<string, number> = {};
     source.forEach(r => {
       const d = r.data ?? '';
@@ -157,7 +155,7 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-[#F47920]">Setor GRIS / Cadastro — Torre de Controle Lösung</p>
             <h1 className="mt-1.5 text-2xl font-bold text-white">Dashboard de Desempenho Operacional</h1>
-            <p className="mt-1 text-sm text-gray-400">Selecione a base para visualizar os indicadores detalhados.</p>
+            <p className="mt-1 text-sm text-gray-400">Selecione a base e filtre por período, turno e operador.</p>
           </div>
           {isManagerUser && (
             <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
@@ -181,7 +179,7 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
         {BASE_TABS.map(t => {
           const Icon = t.icon;
           const isActive = baseView === t.id;
-          const count = t.id === 'cadastro' ? cadKpis.total : t.id === 'checklist' ? chkKpis.total : cadKpis.total + chkKpis.total;
+          const count = t.id === 'cadastro' ? cadKpis.total : chkKpis.total;
           return (
             <button
               key={t.id}
@@ -237,75 +235,14 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
             <option value="">Status</option>
             <option value="Validado">Validado</option>
             <option value="Pendência">Pendência</option>
-            <option value="Recusado">Recusado</option>
             <option value="Andamento">Andamento</option>
+            {baseView === 'cadastro' && <option value="Recusado">Recusado</option>}
           </select>
           {(filters.turno || filters.atendente || filters.status) && (
             <button onClick={() => onFiltersChange({ ...filters, turno: '', atendente: '', status: '' })} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-500 hover:text-gray-700">Limpar</button>
           )}
         </div>
       </div>
-
-      {/* ═══════════════════════════════════════ */}
-      {/* ─── CONSOLIDADO VIEW ─── */}
-      {/* ═══════════════════════════════════════ */}
-      {baseView === 'consolidado' && (
-        <div className="space-y-4">
-          {/* Summary KPIs — both bases side by side */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <KpiCard title="Total Cadastros" value={cadKpis.total} icon={<FileCheck className="h-5 w-5" />} accent="orange" subtitle={`Período: ${periodLabel}`} subtitleLink={() => onNavigate?.('cadastro')} />
-            <KpiCard title="Total Checklists" value={chkKpis.total} icon={<Truck className="h-5 w-5" />} accent="orange" subtitle={`Período: ${periodLabel}`} subtitleLink={() => onNavigate?.('checklist')} />
-            <KpiCard title="Eficiência Geral" value={`${cadKpis.total + chkKpis.total > 0 ? Math.round(((cadKpis.validados + chkKpis.validados) / (cadKpis.total + chkKpis.total)) * 100) : 0}%`} icon={<CheckCircle2 className="h-5 w-5" />} accent="green" subtitle={`${cadKpis.validados + chkKpis.validados} validados`} />
-            <KpiCard title="Pendências Total" value={cadKpis.pendencias + chkKpis.pendencias} icon={<AlertTriangle className="h-5 w-5" />} accent="amber" subtitle={cadKpis.recusados + chkKpis.vencidos > 0 ? `${cadKpis.recusados + chkKpis.vencidos} críticos` : 'Tudo em ordem'} />
-          </div>
-
-          {/* Productivity + Status donut */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            {isManagerUser && (
-              <Panel title="Produtividade por Operador" subtitle="Cadastros x Checklists por operador" className="lg:col-span-2" action={<Users className="h-4 w-4 text-[#F47920]" />}>
-                {productivityData.length > 0 ? (
-                  <>
-                    <ProductivityBarChart data={productivityData} height={200} />
-                    <div className="mt-3 flex items-center justify-center gap-6 text-xs text-gray-500">
-                      <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#F47920]" /> Cadastros</span>
-                      <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#334155]" /> Checklists</span>
-                    </div>
-                  </>
-                ) : <EmptyChart />}
-              </Panel>
-            )}
-
-            <Panel title="Status Consolidado" subtitle="Distribuição geral" className={isManagerUser ? '' : 'lg:col-span-3'}>
-              <div className="flex flex-col items-center gap-4">
-                <DonutChart
-                  segments={[
-                    { label: 'Validado', value: cadKpis.validados + chkKpis.validados, color: '#10b981' },
-                    { label: 'Andamento', value: cadKpis.andamento + chkKpis.andamento, color: '#3b82f6' },
-                    { label: 'Pendência', value: cadKpis.pendencias + chkKpis.pendencias, color: '#f59e0b' },
-                    { label: 'Recusado', value: cadKpis.recusados, color: '#ef4444' },
-                  ].filter(s => s.value > 0)}
-                  size={200}
-                />
-              </div>
-            </Panel>
-          </div>
-
-          {/* Calendar */}
-          <Panel title="Calendário de Atividades" subtitle="Últimos 14 dias — volume total de registros" action={<Calendar className="h-4 w-4 text-[#F47920]" />}>
-            <CalendarGrid days={calData} maxCal={maxCal} />
-          </Panel>
-
-          {/* Monthly evolution — both */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Panel title="Cadastros por Mês" subtitle="Evolução mensal">
-              {cadMes.length > 1 ? <LineChart data={cadMes} color="#F47920" /> : <EmptyChart />}
-            </Panel>
-            <Panel title="Checklists por Mês" subtitle="Evolução mensal">
-              {chkMes.length > 1 ? <LineChart data={chkMes} color="#334155" /> : <EmptyChart />}
-            </Panel>
-          </div>
-        </div>
-      )}
 
       {/* ═══════════════════════════════════════ */}
       {/* ─── CADASTRO VIEW ─── */}
