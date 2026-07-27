@@ -36,11 +36,22 @@ const EMPTY = {
   pis: '', motorista: '', placa_cavalo: '', tipo: '', ano_cavalo: '',
   placa_carreta: '', ano_carreta: '', atendente: '', tentativa1: '', tentativa2: '',
   tentativa3: '', tipo_cadastro: '', status: 'Andamento', pendencia_recusa: '', horario_fim: '', obs: '', semana: '',
+  telefone: '', eta_origem: '',
 };
 
 function nowTime(): string {
   const d = new Date();
   return d.toTimeString().slice(0, 5);
+}
+
+function calcSla(inicio: string, fim: string): string {
+  const [hi, mi] = inicio.split(':').map(Number);
+  const [hf, mf] = fim.split(':').map(Number);
+  let diff = (hf * 60 + mf) - (hi * 60 + mi);
+  if (diff < 0) diff += 24 * 60;
+  const h = Math.floor(diff / 60);
+  const m = diff % 60;
+  return h > 0 ? `${h}h ${m}min` : `${m}min`;
 }
 type FormType = typeof EMPTY;
 
@@ -48,11 +59,11 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'mes', label: 'Mês' },
   { key: 'turno', label: 'Turno' },
   { key: 'operacao', label: 'Operação' },
-  { key: 'classificacao', label: 'Classificação' },
   { key: 'data', label: 'Data', type: 'date' },
-
+  { key: 'eta_origem', label: 'ETA / Origem' },
   { key: 'pis', label: 'PIS' },
   { key: 'motorista', label: 'Motorista' },
+  { key: 'telefone', label: 'Telefone' },
   { key: 'placa_cavalo', label: 'Placa Cavalo' },
   { key: 'tipo', label: 'Tipo Veículo' },
   { key: 'ano_cavalo', label: 'Ano Cavalo' },
@@ -66,6 +77,8 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
 ];
 
 const inputCls = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-[#F47920] focus:outline-none focus:ring-1 focus:ring-[#F47920]/20';
+
+const CLASSIFICACOES = ['Novo', 'Trativa de Pendência', 'Suspenso'] as const;
 
 interface Props {
   filters: Filters;
@@ -270,6 +283,13 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                 </div>
               ))}
               <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Classificação</label>
+                <select value={form.classificacao ?? ''} onChange={e => setForm({ ...form, classificacao: e.target.value })} className={inputCls}>
+                  <option value="">Selecione...</option>
+                  {CLASSIFICACOES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Status</label>
                 <select value={form.status ?? 'Andamento'} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
                   <option>Andamento</option>
@@ -290,13 +310,24 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                 <label className="mb-1 block text-xs font-medium text-gray-600">Horário 3 (auto)</label>
                 <input type="time" value={form.tentativa3 ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Início (auto)</label>
-                <input type="time" value={form.horario_inicio ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Última edição (auto)</label>
-                <input type="time" value={form.horario_fim ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
+              <div className="col-span-2 md:col-span-4">
+                <label className="mb-1 block text-xs font-semibold text-gray-700">SLA de Atendimento</label>
+                <div className="flex gap-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                  <div className="flex-1">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Início</p>
+                    <p className="text-sm font-semibold text-gray-800">{form.horario_inicio || '—'}</p>
+                  </div>
+                  <div className="flex items-center text-gray-300">→</div>
+                  <div className="flex-1">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Fim</p>
+                    <p className="text-sm font-semibold text-gray-800">{form.horario_fim || '—'}</p>
+                  </div>
+                  <div className="flex items-center text-gray-300">=</div>
+                  <div className="flex-1">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Tempo Total</p>
+                    <p className="text-sm font-semibold text-[#F47920]">{form.horario_inicio && form.horario_fim ? calcSla(form.horario_inicio, form.horario_fim) : '—'}</p>
+                  </div>
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">

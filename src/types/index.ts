@@ -9,6 +9,8 @@ export interface CadastroRealizado {
   horario_inicio: string | null;
   pis: string | null;
   motorista: string | null;
+  telefone: string | null;
+  eta_origem: string | null;
   placa_cavalo: string | null;
   tipo: string | null;
   ano_cavalo: string | null;
