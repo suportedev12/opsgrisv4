@@ -59,9 +59,6 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'placa_carreta', label: 'Placa Carreta' },
   { key: 'ano_carreta', label: 'Ano Carreta' },
   { key: 'atendente', label: 'Atendente' },
-  { key: 'tentativa1', label: 'Horário 1', type: 'time' },
-  { key: 'tentativa2', label: 'Horário 2', type: 'time' },
-  { key: 'tentativa3', label: 'Horário 3', type: 'time' },
   { key: 'tipo_cadastro', label: 'Tipo de Cadastro' },
   { key: 'semana', label: 'Semana' },
   { key: 'pendencia_recusa', label: 'Pendência / Recusa', span: true },
@@ -108,7 +105,12 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
     const now = nowTime();
     const payload = { ...form };
     if (!editing) {
-      payload.horario_inicio = payload.horario_inicio || now;
+      payload.horario_inicio = now;
+      payload.tentativa1 = now;
+    } else {
+      if (!payload.tentativa1) payload.tentativa1 = now;
+      else if (!payload.tentativa2) payload.tentativa2 = now;
+      else if (!payload.tentativa3) payload.tentativa3 = now;
     }
     payload.horario_fim = now;
     if (editing) {
@@ -275,6 +277,18 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                   <option>Pendência</option>
                   <option>Recusado</option>
                 </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Horário 1 (auto)</label>
+                <input type="time" value={form.tentativa1 ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Horário 2 (auto)</label>
+                <input type="time" value={form.tentativa2 ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Horário 3 (auto)</label>
+                <input type="time" value={form.tentativa3 ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Início (auto)</label>
