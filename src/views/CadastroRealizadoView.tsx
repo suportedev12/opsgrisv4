@@ -63,10 +63,10 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'eta_origem', label: 'ETA / Origem' },
   { key: 'pis', label: 'PIS' },
   { key: 'motorista', label: 'Motorista' },
-  { key: 'telefone', label: 'Telefone' },
-  { key: 'placa_cavalo', label: 'Placa Cavalo' },
+  { key: 'telefone', label: 'Telefone (manual)' },
+  { key: 'placa_cavalo', label: 'Placa Veículo' },
   { key: 'tipo', label: 'Tipo Veículo' },
-  { key: 'ano_cavalo', label: 'Ano Cavalo' },
+  { key: 'ano_cavalo', label: 'Ano Veículo' },
   { key: 'placa_carreta', label: 'Placa Carreta' },
   { key: 'ano_carreta', label: 'Ano Carreta' },
   { key: 'atendente', label: 'Atendente' },
@@ -78,7 +78,7 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
 
 const inputCls = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-[#F47920] focus:outline-none focus:ring-1 focus:ring-[#F47920]/20';
 
-const CLASSIFICACOES = ['Novo', 'Trativa de Pendência', 'Suspenso'] as const;
+const CLASSIFICACOES = ['Novo Cadastro', 'Atualizar Cadastro'] as const;
 
 interface Props {
   filters: Filters;
@@ -183,7 +183,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Operação / Classif.</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Data / Horário</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Motorista & PIS</th>
-                <th className="whitespace-nowrap px-4 py-3 font-semibold">Cavalo / Carreta</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Veículo / Carreta</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Atendente</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Horários</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Tipo</th>

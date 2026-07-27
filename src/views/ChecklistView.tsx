@@ -53,7 +53,6 @@ function calcSla(inicio: string, fim: string): string {
   return h > 0 ? `${h}h ${m}min` : `${m}min`;
 }
 
-const CLASSIFICACOES = ['Novo', 'Trativa de Pendência', 'Suspenso'] as const;
 type FormType = typeof EMPTY;
 
 const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: boolean }[] = [
@@ -64,9 +63,9 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'protocolo', label: 'Protocolo' },
   { key: 'eta_origem', label: 'ETA / Origem' },
   { key: 'motorista', label: 'Motorista' },
-  { key: 'telefone', label: 'Telefone' },
+  { key: 'telefone', label: 'Telefone (manual)' },
   { key: 'segundo_motorista', label: '2º Motorista' },
-  { key: 'placa_cavalo', label: 'Placa Cavalo' },
+  { key: 'placa_cavalo', label: 'Placa Veículo' },
   { key: 'placa_carreta', label: 'Placa Carreta' },
   { key: 'atendente', label: 'Atendente' },
   { key: 'vencimento_checklist', label: 'Vencimento Checklist', type: 'date' },
@@ -181,7 +180,7 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Operação / Classif.</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Data / ETA</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Origem & Motorista</th>
-                <th className="whitespace-nowrap px-4 py-3 font-semibold">Placa Cavalo / Carreta</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Placa Veículo / Carreta</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Atendente</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Horários</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
@@ -284,19 +283,11 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
                 </div>
               ))}
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Classificação</label>
-                <select value={form.classificacao ?? ''} onChange={e => setForm({ ...form, classificacao: e.target.value })} className={inputCls}>
-                  <option value="">Selecione...</option>
-                  {CLASSIFICACOES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Status</label>
                 <select value={form.status ?? 'Andamento'} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
                   <option>Andamento</option>
                   <option>Validado</option>
                   <option>Pendência</option>
-                  <option></option>
                 </select>
               </div>
               <div>
