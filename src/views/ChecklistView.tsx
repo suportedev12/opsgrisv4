@@ -296,6 +296,7 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
                   <option>Andamento</option>
                   <option>Validado</option>
                   <option>Pendência</option>
+                  <option></option>
                 </select>
               </div>
               <div>
