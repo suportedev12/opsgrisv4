@@ -37,6 +37,11 @@ const EMPTY = {
   placa_carreta: '', ano_carreta: '', atendente: '', tentativa1: '', tentativa2: '',
   tentativa3: '', tipo_cadastro: '', status: 'Andamento', pendencia_recusa: '', horario_fim: '', obs: '', semana: '',
 };
+
+function nowTime(): string {
+  const d = new Date();
+  return d.toTimeString().slice(0, 5);
+}
 type FormType = typeof EMPTY;
 
 const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: boolean }[] = [
@@ -45,8 +50,7 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'operacao', label: 'Operação' },
   { key: 'classificacao', label: 'Classificação' },
   { key: 'data', label: 'Data', type: 'date' },
-  { key: 'horario_inicio', label: 'Horário Início', type: 'time' },
-  { key: 'horario_fim', label: 'Horário Fim', type: 'time' },
+
   { key: 'pis', label: 'PIS' },
   { key: 'motorista', label: 'Motorista' },
   { key: 'placa_cavalo', label: 'Placa Cavalo' },
@@ -55,9 +59,9 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'placa_carreta', label: 'Placa Carreta' },
   { key: 'ano_carreta', label: 'Ano Carreta' },
   { key: 'atendente', label: 'Atendente' },
-  { key: 'tentativa1', label: '1ª Tentativa' },
-  { key: 'tentativa2', label: '2ª Tentativa' },
-  { key: 'tentativa3', label: '3ª Tentativa' },
+  { key: 'tentativa1', label: 'Horário 1', type: 'time' },
+  { key: 'tentativa2', label: 'Horário 2', type: 'time' },
+  { key: 'tentativa3', label: 'Horário 3', type: 'time' },
   { key: 'tipo_cadastro', label: 'Tipo de Cadastro' },
   { key: 'semana', label: 'Semana' },
   { key: 'pendencia_recusa', label: 'Pendência / Recusa', span: true },
@@ -101,10 +105,16 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
   const atendentes = isManager ? getUniqueAtendentes(records, []) : [];
 
   const save = async () => {
+    const now = nowTime();
+    const payload = { ...form };
+    if (!editing) {
+      payload.horario_inicio = payload.horario_inicio || now;
+    }
+    payload.horario_fim = now;
     if (editing) {
-      await supabase.from('cadastro_records').update(form).eq('id', editing.id);
+      await supabase.from('cadastro_records').update(payload).eq('id', editing.id);
     } else {
-      await supabase.from('cadastro_records').insert(form);
+      await supabase.from('cadastro_records').insert(payload);
     }
     setShowForm(false); setEditing(null); setForm(EMPTY); await load();
   };
@@ -160,7 +170,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Motorista & PIS</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Cavalo / Carreta</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Atendente</th>
-                <th className="whitespace-nowrap px-4 py-3 font-semibold">Tentativas</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Horários</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Tipo</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Pendência / Recusa</th>
@@ -201,9 +211,9 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                     <p className="text-gray-700">{r.atendente ?? '-'}</p>
                   </td>
                   <td className="px-4 py-4 align-top whitespace-nowrap">
-                    <p className="text-xs text-gray-600">1ª: {r.tentativa1 || '-'}</p>
-                    <p className="text-xs text-gray-600">2ª: {r.tentativa2 || '-'}</p>
-                    <p className="text-xs text-gray-600">3ª: {r.tentativa3 || '-'}</p>
+                    <p className="text-xs text-gray-600">H1: {r.tentativa1 || '-'}</p>
+                    <p className="text-xs text-gray-600">H2: {r.tentativa2 || '-'}</p>
+                    <p className="text-xs text-gray-600">H3: {r.tentativa3 || '-'}</p>
                   </td>
                   <td className="px-4 py-4 align-top">
                     <p className="text-gray-700">{r.tipo_cadastro ?? '-'}</p>
@@ -265,6 +275,14 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                   <option>Pendência</option>
                   <option>Recusado</option>
                 </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Início (auto)</label>
+                <input type="time" value={form.horario_inicio ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Última edição (auto)</label>
+                <input type="time" value={form.horario_fim ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">

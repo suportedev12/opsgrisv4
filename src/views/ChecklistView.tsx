@@ -37,6 +37,11 @@ const EMPTY = {
   tentativa2: '', tentativa3: '', status: 'Andamento', pendencia: '',
   vencimento_checklist: '', horario_fim: '', semana: '',
 };
+
+function nowTime(): string {
+  const d = new Date();
+  return d.toTimeString().slice(0, 5);
+}
 type FormType = typeof EMPTY;
 
 const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: boolean }[] = [
@@ -45,8 +50,6 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'operacao', label: 'Operação' },
   { key: 'classificacao', label: 'Classificação' },
   { key: 'data', label: 'Data', type: 'date' },
-  { key: 'horario_inicio', label: 'Horário Início', type: 'time' },
-  { key: 'horario_fim', label: 'Horário Fim', type: 'time' },
   { key: 'protocolo', label: 'Protocolo' },
   { key: 'eta_origem', label: 'ETA / Origem' },
   { key: 'motorista', label: 'Motorista' },
@@ -55,9 +58,9 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'placa_cavalo', label: 'Placa Cavalo' },
   { key: 'placa_carreta', label: 'Placa Carreta' },
   { key: 'atendente', label: 'Atendente' },
-  { key: 'tentativa1', label: '1ª Tentativa' },
-  { key: 'tentativa2', label: '2ª Tentativa' },
-  { key: 'tentativa3', label: '3ª Tentativa' },
+  { key: 'tentativa1', label: 'Horário 1', type: 'time' },
+  { key: 'tentativa2', label: 'Horário 2', type: 'time' },
+  { key: 'tentativa3', label: 'Horário 3', type: 'time' },
   { key: 'vencimento_checklist', label: 'Vencimento Checklist', type: 'date' },
   { key: 'semana', label: 'Semana' },
   { key: 'pendencia', label: 'Pendência', span: true },
@@ -102,10 +105,16 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
   const today = new Date().toISOString().split('T')[0];
 
   const save = async () => {
+    const now = nowTime();
+    const payload = { ...form };
+    if (!editing) {
+      payload.horario_inicio = payload.horario_inicio || now;
+    }
+    payload.horario_fim = now;
     if (editing) {
-      await supabase.from('checklist_records').update(form).eq('id', editing.id);
+      await supabase.from('checklist_records').update(payload).eq('id', editing.id);
     } else {
-      await supabase.from('checklist_records').insert(form);
+      await supabase.from('checklist_records').insert(payload);
     }
     setShowForm(false); setEditing(null); setForm(EMPTY); await load();
   };
@@ -161,7 +170,7 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Origem & Motorista</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Placa Cavalo / Carreta</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Atendente</th>
-                <th className="whitespace-nowrap px-4 py-3 font-semibold">Tentativas</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Horários</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Vencimento</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Semana</th>
@@ -200,9 +209,9 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
                       <p className="text-gray-700">{r.atendente ?? '-'}</p>
                     </td>
                     <td className="px-4 py-4 align-top whitespace-nowrap">
-                      <p className="text-xs text-gray-600">1ª: {r.tentativa1 || '-'}</p>
-                      <p className="text-xs text-gray-600">2ª: {r.tentativa2 || '-'}</p>
-                      <p className="text-xs text-gray-600">3ª: {r.tentativa3 || '-'}</p>
+                      <p className="text-xs text-gray-600">H1: {r.tentativa1 || '-'}</p>
+                      <p className="text-xs text-gray-600">H2: {r.tentativa2 || '-'}</p>
+                      <p className="text-xs text-gray-600">H3: {r.tentativa3 || '-'}</p>
                     </td>
                     <td className="px-4 py-4 align-top">
                       <StatusBadge status={r.status} />
@@ -268,6 +277,14 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
                   <option>Validado</option>
                   <option>Pendência</option>
                 </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Início (auto)</label>
+                <input type="time" value={form.horario_inicio ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Última edição (auto)</label>
+                <input type="time" value={form.horario_fim ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
