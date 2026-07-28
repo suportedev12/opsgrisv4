@@ -8,8 +8,7 @@ import type { ReactNode } from 'react';
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; icon: ReactNode }> = {
   'Validado':  { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-300', icon: <span className="h-3 w-3 rounded-full border-2 border-emerald-500 flex items-center justify-center"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /></span> },
-  'Andamento': { bg: 'bg-blue-50',    text: 'text-blue-600',    border: 'border-blue-300',    icon: <span className="text-[10px]">⏱</span> },
-  'Pendência': { bg: 'bg-amber-50',   text: 'text-amber-600',   border: 'border-amber-300',   icon: <span className="text-[10px]">⚠</span> },
+  'Pendente':  { bg: 'bg-amber-50',   text: 'text-amber-600',   border: 'border-amber-300',   icon: <span className="text-[10px]">⚠</span> },
   'Recusado':  { bg: 'bg-red-50',     text: 'text-red-600',     border: 'border-red-300',     icon: <span className="text-[10px]">✕</span> },
 };
 
@@ -31,13 +30,21 @@ function classifBadge(c: string | null) {
   return 'bg-gray-100 text-gray-600';
 }
 
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+const OPERACOES = ['Shopee', 'Amazon', 'Meli'] as const;
+const TIPOS_CADASTRO = ['Novo Cadastro', 'Atualização'] as const;
+
 const EMPTY = {
   mes: '', turno: '', operacao: '', classificacao: '', data: '', horario_inicio: '',
-  pis: '', motorista: '', placa_cavalo: '', tipo: '', ano_cavalo: '',
+  motorista: '', placa_cavalo: '', tipo: '', ano_cavalo: '',
   placa_carreta: '', ano_carreta: '', atendente: '', tentativa1: '', tentativa2: '',
-  tentativa3: '', tipo_cadastro: '', status: 'Andamento', pendencia_recusa: '', horario_fim: '', obs: '', semana: '',
+  tentativa3: '', tipo_cadastro: '', status: 'Pendente', pendencia_recusa: '', horario_fim: '', obs: '',
   telefone: '', eta_origem: '',
 };
+
+function todayStr(): string { return new Date().toISOString().split('T')[0]; }
+function currentMes(): string { return MESES[new Date().getMonth()]; }
 
 function nowTime(): string {
   const d = new Date();
@@ -55,13 +62,10 @@ function calcSla(inicio: string, fim: string): string {
 }
 type FormType = typeof EMPTY;
 
-const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: boolean }[] = [
-  { key: 'mes', label: 'Mês' },
+const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: boolean; options?: readonly string[] }[] = [
   { key: 'turno', label: 'Turno' },
-  { key: 'operacao', label: 'Operação' },
-  { key: 'data', label: 'Data', type: 'date' },
+  { key: 'operacao', label: 'Operação', type: 'select', options: OPERACOES },
   { key: 'eta_origem', label: 'ETA / Origem' },
-  { key: 'pis', label: 'PIS' },
   { key: 'motorista', label: 'Motorista' },
   { key: 'telefone', label: 'Telefone (manual)' },
   { key: 'placa_cavalo', label: 'Placa Veículo' },
@@ -69,16 +73,15 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'ano_cavalo', label: 'Ano Veículo' },
   { key: 'placa_carreta', label: 'Placa Carreta' },
   { key: 'ano_carreta', label: 'Ano Carreta' },
-  { key: 'atendente', label: 'Atendente', type: 'select', options: [] as string[] },
-  { key: 'tipo_cadastro', label: 'Tipo de Cadastro' },
-  { key: 'semana', label: 'Semana' },
+  { key: 'atendente', label: 'Atendente', type: 'select' },
+  { key: 'tipo_cadastro', label: 'Tipo de Cadastro', type: 'select', options: TIPOS_CADASTRO },
   { key: 'pendencia_recusa', label: 'Pendência / Recusa', span: true },
   { key: 'obs', label: 'OBS', span: true },
 ];
 
 const inputCls = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-[#F47920] focus:outline-none focus:ring-1 focus:ring-[#F47920]/20';
 
-const CLASSIFICACOES = ['Novo Cadastro', 'Atualizar Cadastro'] as const;
+
 
 interface Props {
   filters: Filters;
@@ -101,7 +104,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
     setLoading(true);
     const [{ data: cad }, { data: profs }] = await Promise.all([
       supabase.from('cadastro_records').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('nome').eq('active', true).order('nome', { ascending: true }),
+      supabase.from('atendentes').select('nome').eq('active', true).order('nome', { ascending: true }),
     ]);
     setRecords(cad ?? []);
     setAtendenteOptions((profs ?? []).map(p => p.nome).filter(Boolean));
@@ -152,7 +155,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
     setShowForm(true);
   };
 
-  const startNew = () => { setEditing(null); setForm(EMPTY); setShowForm(true); };
+  const startNew = () => { setEditing(null); setForm({ ...EMPTY, data: todayStr(), mes: currentMes() }); setShowForm(true); };
 
   const fmtDate = (d: string | null) => {
     if (!d) return '-';
@@ -187,7 +190,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Mês / Turno</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Operação / Classif.</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Data / Horário</th>
-                <th className="whitespace-nowrap px-4 py-3 font-semibold">Motorista & PIS</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Motorista</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Veículo / Carreta</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Atendente</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Horários</th>
@@ -218,7 +221,6 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                   </td>
                   <td className="px-4 py-4 align-top">
                     <p className="font-semibold text-gray-800">{r.motorista ?? '-'}</p>
-                    {r.pis && <p className="text-xs text-gray-500">PIS: {r.pis}</p>}
                   </td>
                   <td className="px-4 py-4 align-top">
                     <p className="font-medium text-gray-800">{r.placa_cavalo ?? '-'}</p>
@@ -278,6 +280,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
             <div className="grid grid-cols-2 gap-4 p-6 md:grid-cols-4">
               {FORM_FIELDS.map(col => {
                 if (col.type === 'select') {
+                  const opts = col.options ?? atendenteOptions;
                   return (
                     <div key={col.key} className={col.span ? 'col-span-2' : ''}>
                       <label className="mb-1 block text-xs font-medium text-gray-600">{col.label}</label>
@@ -287,7 +290,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                         className={inputCls}
                       >
                         <option value="">Selecione...</option>
-                        {atendenteOptions.map(a => <option key={a} value={a}>{a}</option>)}
+                        {opts.map(a => <option key={a} value={a}>{a}</option>)}
                       </select>
                     </div>
                   );
@@ -305,18 +308,10 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                 );
               })}
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Classificação</label>
-                <select value={form.classificacao ?? ''} onChange={e => setForm({ ...form, classificacao: e.target.value })} className={inputCls}>
-                  <option value="">Selecione...</option>
-                  {CLASSIFICACOES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Status</label>
-                <select value={form.status ?? 'Andamento'} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
-                  <option>Andamento</option>
+                <select value={form.status ?? 'Pendente'} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
+                  <option>Pendente</option>
                   <option>Validado</option>
-                  <option>Pendência</option>
                   <option>Recusado</option>
                 </select>
               </div>

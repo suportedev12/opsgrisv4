@@ -8,8 +8,8 @@ import type { ReactNode } from 'react';
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; icon: ReactNode }> = {
   'Validado':  { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-300', icon: <span className="h-3 w-3 rounded-full border-2 border-emerald-500 flex items-center justify-center"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /></span> },
-  'Pendência': { bg: 'bg-amber-50',   text: 'text-amber-600',   border: 'border-amber-300',   icon: <span className="text-[10px]">⚠</span> },
-  'Reprovado': { bg: 'bg-red-50',     text: 'text-red-600',     border: 'border-red-300',     icon: <span className="text-[10px]">✕</span> },
+  'Pendente':  { bg: 'bg-amber-50',   text: 'text-amber-600',   border: 'border-amber-300',   icon: <span className="text-[10px]">⚠</span> },
+  'Recusado':  { bg: 'bg-red-50',     text: 'text-red-600',     border: 'border-red-300',     icon: <span className="text-[10px]">✕</span> },
 };
 
 function StatusBadge({ status }: { status: string | null }) {
@@ -30,13 +30,20 @@ function classifBadge(c: string | null) {
   return 'bg-gray-100 text-gray-600';
 }
 
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+const OPERACOES = ['Shopee', 'Amazon', 'Meli'] as const;
+
 const EMPTY = {
   mes: '', turno: '', operacao: '', classificacao: '', data: '', horario_inicio: '',
   protocolo: '', eta_origem: '', motorista: '', telefone: '', segundo_motorista: '',
   placa_cavalo: '', placa_carreta: '', atendente: '', obs: '', tentativa1: '',
-  tentativa2: '', tentativa3: '', status: 'Reprovado', pendencia: '',
-  vencimento_checklist: '', horario_fim: '', semana: '',
+  tentativa2: '', tentativa3: '', status: 'Pendente', pendencia: '',
+  vencimento_checklist: '', horario_fim: '',
 };
+
+function todayStr(): string { return new Date().toISOString().split('T')[0]; }
+function currentMes(): string { return MESES[new Date().getMonth()]; }
 
 function nowTime(): string {
   const d = new Date();
@@ -55,11 +62,9 @@ function calcSla(inicio: string, fim: string): string {
 
 type FormType = typeof EMPTY;
 
-const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: boolean }[] = [
-  { key: 'mes', label: 'Mês' },
+const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: boolean; options?: readonly string[] }[] = [
   { key: 'turno', label: 'Turno' },
-  { key: 'operacao', label: 'Operação' },
-  { key: 'data', label: 'Data', type: 'date' },
+  { key: 'operacao', label: 'Operação', type: 'select', options: OPERACOES },
   { key: 'protocolo', label: 'Protocolo' },
   { key: 'eta_origem', label: 'ETA / Origem' },
   { key: 'motorista', label: 'Motorista' },
@@ -69,7 +74,6 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'placa_carreta', label: 'Placa Carreta' },
   { key: 'atendente', label: 'Atendente', type: 'select' },
   { key: 'vencimento_checklist', label: 'Vencimento Checklist', type: 'date' },
-  { key: 'semana', label: 'Semana' },
   { key: 'pendencia', label: 'Pendência', span: true },
   { key: 'obs', label: 'OBS', span: true },
 ];
@@ -97,7 +101,7 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
     setLoading(true);
     const [{ data: chk }, { data: profs }] = await Promise.all([
       supabase.from('checklist_records').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('nome').eq('active', true).order('nome', { ascending: true }),
+      supabase.from('atendentes').select('nome').eq('active', true).order('nome', { ascending: true }),
     ]);
     setRecords(chk ?? []);
     setAtendenteOptions((profs ?? []).map(p => p.nome).filter(Boolean));
@@ -149,7 +153,7 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
     setShowForm(true);
   };
 
-  const startNew = () => { setEditing(null); setForm(EMPTY); setShowForm(true); };
+  const startNew = () => { setEditing(null); setForm({ ...EMPTY, data: todayStr(), mes: currentMes() }); setShowForm(true); };
 
   const fmtDate = (d: string | null) => {
     if (!d) return '-';
@@ -173,7 +177,7 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
       </div>
 
       {/* Filters */}
-      <FilterBar filters={filters} onChange={onFiltersChange} atendentes={atendentes} placeholder="Pesquisar por motorista, protocolo, placa..." statuses={[{ value: 'Validado', label: 'Validado' }, { value: 'Pendência', label: 'Pendência' }, { value: 'Reprovado', label: 'Reprovado' }]} />
+      <FilterBar filters={filters} onChange={onFiltersChange} atendentes={atendentes} placeholder="Pesquisar por motorista, protocolo, placa..." statuses={[{ value: 'Validado', label: 'Validado' }, { value: 'Pendente', label: 'Pendente' }, { value: 'Recusado', label: 'Recusado' }]} />
 
       {/* Table */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -190,7 +194,6 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Horários</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
                 <th className="whitespace-nowrap px-4 py-3 font-semibold">Vencimento</th>
-                <th className="whitespace-nowrap px-4 py-3 font-semibold">Semana</th>
                 {canEdit && <th className="whitespace-nowrap px-4 py-3 font-semibold">Ações</th>}
               </tr>
             </thead>
@@ -237,13 +240,6 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
                       <p className={`text-sm font-medium ${isVencido ? 'text-red-500' : 'text-gray-700'}`}>{fmtDate(r.vencimento_checklist)}</p>
                       {r.horario_fim && <p className="text-xs text-gray-400">Fim: {r.horario_fim}</p>}
                     </td>
-                    <td className="px-4 py-4 align-top">
-                      {r.semana && (
-                        <span className="inline-block rounded-lg border border-[#F47920]/30 bg-[#F47920]/10 px-2 py-1 text-xs font-semibold text-[#F47920]">
-                          {r.semana}
-                        </span>
-                      )}
-                    </td>
                     {canEdit && (
                       <td className="px-4 py-4 align-top">
                         <div className="flex items-center gap-1.5">
@@ -256,7 +252,7 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={canEdit ? 11 : 10} className="py-12 text-center text-gray-400">Nenhum registro encontrado.</td></tr>
+                <tr><td colSpan={canEdit ? 10 : 9} className="py-12 text-center text-gray-400">Nenhum registro encontrado.</td></tr>
               )}
             </tbody>
           </table>
@@ -278,6 +274,7 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
             <div className="grid grid-cols-2 gap-4 p-6 md:grid-cols-4">
               {FORM_FIELDS.map(col => {
                 if (col.type === 'select') {
+                  const opts = col.options ?? atendenteOptions;
                   return (
                     <div key={col.key} className={col.span ? 'col-span-2' : ''}>
                       <label className="mb-1 block text-xs font-medium text-gray-600">{col.label}</label>
@@ -287,7 +284,7 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
                         className={inputCls}
                       >
                         <option value="">Selecione...</option>
-                        {atendenteOptions.map(a => <option key={a} value={a}>{a}</option>)}
+                        {opts.map(a => <option key={a} value={a}>{a}</option>)}
                       </select>
                     </div>
                   );
@@ -306,10 +303,10 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
               })}
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Status</label>
-                <select value={form.status ?? 'Reprovado'} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
-                  <option>Reprovado</option>
+                <select value={form.status ?? 'Pendente'} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
+                  <option>Pendente</option>
                   <option>Validado</option>
-                  <option>Pendência</option>
+                  <option>Recusado</option>
                 </select>
               </div>
               <div>
