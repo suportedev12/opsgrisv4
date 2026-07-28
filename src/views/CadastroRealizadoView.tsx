@@ -69,7 +69,7 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'ano_cavalo', label: 'Ano Veículo' },
   { key: 'placa_carreta', label: 'Placa Carreta' },
   { key: 'ano_carreta', label: 'Ano Carreta' },
-  { key: 'atendente', label: 'Atendente' },
+  { key: 'atendente', label: 'Atendente', type: 'select', options: [] as string[] },
   { key: 'tipo_cadastro', label: 'Tipo de Cadastro' },
   { key: 'semana', label: 'Semana' },
   { key: 'pendencia_recusa', label: 'Pendência / Recusa', span: true },
@@ -95,11 +95,16 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
   const [editing, setEditing] = useState<CadastroRealizado | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormType>(EMPTY);
+  const [atendenteOptions, setAtendenteOptions] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from('cadastro_records').select('*').order('created_at', { ascending: false });
-    setRecords(data ?? []);
+    const [{ data: cad }, { data: profs }] = await Promise.all([
+      supabase.from('cadastro_records').select('*').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('nome').eq('active', true).order('nome', { ascending: true }),
+    ]);
+    setRecords(cad ?? []);
+    setAtendenteOptions((profs ?? []).map(p => p.nome).filter(Boolean));
     setLoading(false);
   }, []);
 
@@ -271,17 +276,34 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
               <button onClick={() => setShowForm(false)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X className="h-5 w-5" /></button>
             </div>
             <div className="grid grid-cols-2 gap-4 p-6 md:grid-cols-4">
-              {FORM_FIELDS.map(col => (
-                <div key={col.key} className={col.span ? 'col-span-2' : ''}>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">{col.label}</label>
-                  <input
-                    type={col.type ?? 'text'}
-                    value={form[col.key] ?? ''}
-                    onChange={e => setForm({ ...form, [col.key]: e.target.value })}
-                    className={inputCls}
-                  />
-                </div>
-              ))}
+              {FORM_FIELDS.map(col => {
+                if (col.type === 'select') {
+                  return (
+                    <div key={col.key} className={col.span ? 'col-span-2' : ''}>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">{col.label}</label>
+                      <select
+                        value={form[col.key] ?? ''}
+                        onChange={e => setForm({ ...form, [col.key]: e.target.value })}
+                        className={inputCls}
+                      >
+                        <option value="">Selecione...</option>
+                        {atendenteOptions.map(a => <option key={a} value={a}>{a}</option>)}
+                      </select>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={col.key} className={col.span ? 'col-span-2' : ''}>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">{col.label}</label>
+                    <input
+                      type={col.type ?? 'text'}
+                      value={form[col.key] ?? ''}
+                      onChange={e => setForm({ ...form, [col.key]: e.target.value })}
+                      className={inputCls}
+                    />
+                  </div>
+                );
+              })}
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Classificação</label>
                 <select value={form.classificacao ?? ''} onChange={e => setForm({ ...form, classificacao: e.target.value })} className={inputCls}>

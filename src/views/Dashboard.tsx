@@ -2,13 +2,13 @@ import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { CadastroRealizado, ChecklistOperacional, Filters, Period, UserProfile, Meta } from '@/types';
 import { filterCadastros, filterChecklists, getUniqueAtendentes } from '@/utils/filters';
-import { useCadastroKPIs, useChecklistKPIs, byTurno, byAtendente, byWeek, byMonth } from '@/hooks/useKPIs';
+import { useCadastroKPIs, useChecklistKPIs, byTurno, byAtendente, byWeek, byMonth, tempoMedioPorAtendente, mediaPorTurno, mediaPorAtendente } from '@/hooks/useKPIs';
 import { KpiCard } from '@/components/KpiCard';
 import { Panel } from '@/components/Panel';
 import { BarChart, ProductivityBarChart, DonutChart, LineChart } from '@/components/Charts';
 import {
   FileCheck, Truck, AlertTriangle, Users, Calendar,
-  Clock, CheckCircle2, XCircle, Target, Trophy,
+  Clock, CheckCircle2, XCircle, Target, Trophy, BarChart3,
 } from 'lucide-react';
 
 /* ─── Period helpers ─── */
@@ -113,6 +113,87 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
   /* ─── By-atendente (per base) ─── */
   const cadByAtend = useMemo(() => byAtendente(filteredCad), [filteredCad]);
   const chkByAtend = useMemo(() => byAtendente(filteredChk), [filteredChk]);
+
+  /* ─── Tempo médio por atendente ─── */
+  const cadTempoAtend = useMemo(() => tempoMedioPorAtendente(filteredCad), [filteredCad]);
+  const chkTempoAtend = useMemo(() => tempoMedioPorAtendente(filteredChk), [filteredChk]);
+
+  /* ─── Média por turno (solicitados vs realizados) ─── */
+  const cadMediaTurno = useMemo(() => mediaPorTurno(filteredCad), [filteredCad]);
+  const chkMediaTurno = useMemo(() => mediaPorTurno(filteredChk), [filteredChk]);
+
+  /* ─── Média por atendente (solicitados vs realizados) ─── */
+  const cadMediaAtend = useMemo(() => mediaPorAtendente(filteredCad), [filteredCad]);
+  const chkMediaAtend = useMemo(() => mediaPorAtendente(filteredChk), [filteredChk]);
+
+  /* ─── Dashboard Setorial: por operação (setor) ─── */
+  const cadByOper = useMemo(() => {
+    const map: Record<string, { total: number; validados: number }> = {};
+    filteredCad.forEach(r => {
+      const o = r.operacao ?? 'Outros';
+      if (!map[o]) map[o] = { total: 0, validados: 0 };
+      map[o].total++;
+      if (r.status === 'Validado') map[o].validados++;
+    });
+    return Object.entries(map)
+      .map(([operacao, d]) => ({ operacao, ...d, media: d.total > 0 ? Math.round((d.validados / d.total) * 100) : 0 }))
+      .sort((a, b) => b.total - a.total);
+  }, [filteredCad]);
+
+  const chkByOper = useMemo(() => {
+    const map: Record<string, { total: number; validados: number }> = {};
+    filteredChk.forEach(r => {
+      const o = r.operacao ?? 'Outros';
+      if (!map[o]) map[o] = { total: 0, validados: 0 };
+      map[o].total++;
+      if (r.status === 'Validado') map[o].validados++;
+    });
+    return Object.entries(map)
+      .map(([operacao, d]) => ({ operacao, ...d, media: d.total > 0 ? Math.round((d.validados / d.total) * 100) : 0 }))
+      .sort((a, b) => b.total - a.total);
+  }, [filteredChk]);
+
+  /* ─── Turno comparativo: cadastro vs checklist ─── */
+  const turnoComparativo = useMemo(() => {
+    const turnos = new Set<string>();
+    cadMediaTurno.forEach(t => turnos.add(t.turno));
+    chkMediaTurno.forEach(t => turnos.add(t.turno));
+    return Array.from(turnos).sort().map(turno => {
+      const cad = cadMediaTurno.find(t => t.turno === turno);
+      const chk = chkMediaTurno.find(t => t.turno === turno);
+      return {
+        turno,
+        cadTotal: cad?.total ?? 0,
+        cadValidados: cad?.validados ?? 0,
+        cadPct: cad?.media ?? 0,
+        chkTotal: chk?.total ?? 0,
+        chkValidados: chk?.validados ?? 0,
+        chkPct: chk?.media ?? 0,
+      };
+    });
+  }, [cadMediaTurno, chkMediaTurno]);
+
+  /* ─── Classificação breakdown (cadastro) ─── */
+  const classifData = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredCad.forEach(r => {
+      const c = r.classificacao ?? 'Não classificado';
+      map[c] = (map[c] ?? 0) + 1;
+    });
+    const total = Object.values(map).reduce((a, b) => a + b, 0);
+    const colors: Record<string, string> = {
+      'Novo Cadastro': '#F47920',
+      'Atualizar Cadastro': '#3b82f6',
+    };
+    return Object.entries(map)
+      .map(([label, count]) => ({
+        label,
+        total: count,
+        pct: total > 0 ? Math.round((count / total) * 100) : 0,
+        color: colors[label] ?? '#94a3b8',
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [filteredCad]);
 
   const productivityData = useMemo(() => {
     return atendentes.map(name => ({
@@ -265,6 +346,44 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
             <KpiCard title="Tempo Médio" value={`${cadKpis.tempoMedioMin}min`} icon={<Clock className="h-5 w-5" />} accent="blue" subtitle="Por atendimento" />
           </div>
 
+          {/* Média por turno + Tempo médio por operador */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Panel title="Média por Turno" subtitle="Solicitados vs Realizados (Validados)" action={<Clock className="h-4 w-4 text-[#F47920]" />}>
+              {cadMediaTurno.length > 0 ? (
+                <div className="space-y-2.5">
+                  {cadMediaTurno.map(t => (
+                    <div key={t.turno}>
+                      <div className="mb-1 flex items-center justify-between text-sm">
+                        <span className="font-medium text-gray-700">{t.turno}</span>
+                        <span className="text-gray-500">{t.validados}/{t.total} <span className="ml-1.5 text-xs font-semibold text-emerald-600">{t.media}%</span></span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                        <div className="h-full rounded-full bg-[#F47920]" style={{ width: `${t.media}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyChart />}
+            </Panel>
+            <Panel title="Tempo Médio por Operador" subtitle="Minutos por cadastro" action={<Clock className="h-4 w-4 text-[#F47920]" />}>
+              {cadTempoAtend.length > 0 ? (
+                <div className="space-y-2.5">
+                  {cadTempoAtend.slice(0, 8).map(a => (
+                    <div key={a.name}>
+                      <div className="mb-1 flex items-center justify-between text-sm">
+                        <span className="font-medium text-gray-700">{a.name.split(' ')[0]}</span>
+                        <span className="text-gray-500">{a.tempoMedio}min <span className="ml-1.5 text-xs text-gray-400">({a.count} atends.)</span></span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                        <div className="h-full rounded-full bg-blue-400" style={{ width: `${(a.tempoMedio / Math.max(...cadTempoAtend.map(x => x.tempoMedio), 1)) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyChart />}
+            </Panel>
+          </div>
+
           {/* Turno + Semana */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Panel title="Cadastros por Turno" subtitle="Validados x Pendências x Outros">
@@ -341,7 +460,45 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
             <KpiCard title="Validados" value={chkKpis.validados} icon={<CheckCircle2 className="h-5 w-5" />} accent="green" subtitle={`${chkKpis.eficiencia}% do total`} />
             <KpiCard title="Pendências" value={chkKpis.pendencias} icon={<AlertTriangle className="h-5 w-5" />} accent="amber" subtitle={chkKpis.pendencias > 0 ? 'Requer atenção' : 'Sem pendências'} />
             <KpiCard title="Vencidos" value={chkKpis.vencidos} icon={<XCircle className="h-5 w-5" />} accent="red" subtitle={chkKpis.vencidos > 0 ? 'Checklist vencido' : 'Nenhum'} />
-            <KpiCard title="Andamento" value={chkKpis.andamento} icon={<Clock className="h-5 w-5" />} accent="blue" subtitle="Em processo" />
+            <KpiCard title="Tempo Médio" value={`${chkKpis.tempoMedioMin}min`} icon={<Clock className="h-5 w-5" />} accent="blue" subtitle="Por atendimento" />
+          </div>
+
+          {/* Média por turno + Tempo médio por operador */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Panel title="Média por Turno" subtitle="Solicitados vs Realizados (Validados)" action={<Clock className="h-4 w-4 text-[#F47920]" />}>
+              {chkMediaTurno.length > 0 ? (
+                <div className="space-y-2.5">
+                  {chkMediaTurno.map(t => (
+                    <div key={t.turno}>
+                      <div className="mb-1 flex items-center justify-between text-sm">
+                        <span className="font-medium text-gray-700">{t.turno}</span>
+                        <span className="text-gray-500">{t.validados}/{t.total} <span className="ml-1.5 text-xs font-semibold text-emerald-600">{t.media}%</span></span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                        <div className="h-full rounded-full bg-[#334155]" style={{ width: `${t.media}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyChart />}
+            </Panel>
+            <Panel title="Tempo Médio por Operador" subtitle="Minutos por checklist" action={<Clock className="h-4 w-4 text-[#F47920]" />}>
+              {chkTempoAtend.length > 0 ? (
+                <div className="space-y-2.5">
+                  {chkTempoAtend.slice(0, 8).map(a => (
+                    <div key={a.name}>
+                      <div className="mb-1 flex items-center justify-between text-sm">
+                        <span className="font-medium text-gray-700">{a.name.split(' ')[0]}</span>
+                        <span className="text-gray-500">{a.tempoMedio}min <span className="ml-1.5 text-xs text-gray-400">({a.count} atends.)</span></span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                        <div className="h-full rounded-full bg-blue-400" style={{ width: `${(a.tempoMedio / Math.max(...chkTempoAtend.map(x => x.tempoMedio), 1)) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyChart />}
+            </Panel>
           </div>
 
           {/* Turno + Semana */}
@@ -400,11 +557,118 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
           </Panel>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════ */}
+      {/* ─── DASHBOARD SETORIAL ─── */}
+      {/* ═══════════════════════════════════════ */}
+      {isManagerUser && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F47920]/10"><BarChart3 className="h-5 w-5 text-[#F47920]" /></div>
+            <h2 className="text-xl font-bold text-gray-900">Dashboard Setorial</h2>
+            <span className="rounded-full bg-[#F47920]/10 px-3 py-0.5 text-xs font-semibold text-[#F47920">Performance por setor, turno e operador</span>
+          </div>
+
+          {/* Resumo comparativo: Cadastro vs Checklist */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Panel title="Cadastro: Realizados vs Solicitados" subtitle="Por setor (operação)" action={<FileCheck className="h-4 w-4 text-[#F47920]" />}>
+              {cadByOper.length > 0 ? (
+                <div className="space-y-2.5">
+                  {cadByOper.map(o => (
+                    <div key={o.operacao}>
+                      <div className="mb-1 flex items-center justify-between text-sm">
+                        <span className="font-medium text-gray-700">{o.operacao}</span>
+                        <span className="text-gray-500">{o.validados}/{o.total} <span className="ml-1.5 text-xs font-semibold text-emerald-600">{o.media}%</span></span>
+                      </div>
+                      <div className="flex h-2 overflow-hidden rounded-full bg-gray-100">
+                        <div className="h-full rounded-l-full bg-emerald-500" style={{ width: `${(o.validados / Math.max(o.total, 1)) * 100}%` }} />
+                        <div className="h-full rounded-r-full bg-amber-400" style={{ width: `${((o.total - o.validados) / Math.max(o.total, 1)) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyChart />}
+            </Panel>
+            <Panel title="Checklist: Realizados vs Solicitados" subtitle="Por setor (operação)" action={<Truck className="h-4 w-4 text-[#F47920]" />}>
+              {chkByOper.length > 0 ? (
+                <div className="space-y-2.5">
+                  {chkByOper.map(o => (
+                    <div key={o.operacao}>
+                      <div className="mb-1 flex items-center justify-between text-sm">
+                        <span className="font-medium text-gray-700">{o.operacao}</span>
+                        <span className="text-gray-500">{o.validados}/{o.total} <span className="ml-1.5 text-xs font-semibold text-emerald-600">{o.media}%</span></span>
+                      </div>
+                      <div className="flex h-2 overflow-hidden rounded-full bg-gray-100">
+                        <div className="h-full rounded-l-full bg-emerald-500" style={{ width: `${(o.validados / Math.max(o.total, 1)) * 100}%` }} />
+                        <div className="h-full rounded-r-full bg-amber-400" style={{ width: `${((o.total - o.validados) / Math.max(o.total, 1)) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyChart />}
+            </Panel>
+          </div>
+
+          {/* Performance por turno comparativo */}
+          <Panel title="Performance por Turno — Comparativo" subtitle="Cadastros vs Checklists (validados)" action={<Clock className="h-4 w-4 text-[#F47920]" />}>
+            {turnoComparativo.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">
+                      <th className="pb-2 pr-4">Turno</th>
+                      <th className="pb-2 pr-4">Cad. Total</th>
+                      <th className="pb-2 pr-4">Cad. Validados</th>
+                      <th className="pb-2 pr-4">Cad. %</th>
+                      <th className="pb-2 pr-4">Chk. Total</th>
+                      <th className="pb-2 pr-4">Chk. Validados</th>
+                      <th className="pb-2">Chk. %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {turnoComparativo.map(t => (
+                      <tr key={t.turno} className="border-b border-gray-50 hover:bg-orange-50/20">
+                        <td className="py-3 pr-4 font-semibold text-gray-800">{t.turno}</td>
+                        <td className="py-3 pr-4 text-gray-600">{t.cadTotal}</td>
+                        <td className="py-3 pr-4 font-medium text-emerald-600">{t.cadValidados}</td>
+                        <td className="py-3 pr-4"><span className={`font-semibold ${t.cadPct >= 85 ? 'text-emerald-600' : 'text-amber-500'}`}>{t.cadPct}%</span></td>
+                        <td className="py-3 pr-4 text-gray-600">{t.chkTotal}</td>
+                        <td className="py-3 pr-4 font-medium text-emerald-600">{t.chkValidados}</td>
+                        <td className="py-3"><span className={`font-semibold ${t.chkPct >= 85 ? 'text-emerald-600' : 'text-amber-500'}`}>{t.chkPct}%</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <EmptyChart />}
+          </Panel>
+
+          {/* Classificação breakdown - Cadastro */}
+          <Panel title="Classificação — Cadastros" subtitle="Novo Cadastro vs Atualizar Cadastro" action={<FileCheck className="h-4 w-4 text-[#F47920]" />}>
+            {classifData.length > 0 ? (
+              <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-around">
+                <DonutChart
+                  segments={classifData.map(c => ({ label: c.label, value: c.total, color: c.color }))}
+                  size={200}
+                />
+                <div className="space-y-2">
+                  {classifData.map(c => (
+                    <div key={c.label} className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: c.color }} />
+                      <span className="text-sm font-medium text-gray-700">{c.label}</span>
+                      <span className="text-sm font-bold text-gray-900">{c.total}</span>
+                      <span className="text-xs text-gray-400">({c.pct}%)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : <EmptyChart />}
+          </Panel>
+        </div>
+      )}
     </div>
   );
 }
-
-/* ─── Calendar sub-component ─── */
 function CalendarGrid({ days, maxCal }: { days: { date: string; label: string; total: number; isToday: boolean }[]; maxCal: number }) {
   return (
     <div className="grid grid-cols-7 gap-2 sm:grid-cols-14">

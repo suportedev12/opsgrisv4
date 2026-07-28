@@ -18,6 +18,7 @@ interface ChecklistKPI {
   andamento: number;
   eficiencia: number;
   vencidos: number;
+  tempoMedioMin: number;
 }
 
 function calcMinutes(inicio: string | null, fim: string | null): number | null {
@@ -61,7 +62,14 @@ export function useChecklistKPIs(records: ChecklistOperacional[]): ChecklistKPI 
       r.vencimento_checklist && r.vencimento_checklist < today && r.status !== 'Validado'
     ).length;
 
-    return { total, validados, pendencias, andamento, eficiencia, vencidos };
+    const tempos = records
+      .map(r => r.sla_minutes ?? calcMinutes(r.horario_inicio, r.horario_fim))
+      .filter((t): t is number => t !== null && t > 0);
+    const tempoMedioMin = tempos.length > 0
+      ? Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length)
+      : 0;
+
+    return { total, validados, pendencias, andamento, eficiencia, vencidos, tempoMedioMin };
   }, [records]);
 }
 
@@ -120,4 +128,46 @@ export function byDay<T extends { data: string | null }>(records: T[]) {
   return Object.entries(map)
     .map(([data, total]) => ({ data, total }))
     .sort((a, b) => a.data.localeCompare(b.data));
+}
+
+export function tempoMedioPorAtendente<T extends { atendente: string | null; horario_inicio: string | null; horario_fim: string | null; sla_minutes: number | null }>(records: T[]) {
+  const map: Record<string, { sum: number; count: number }> = {};
+  records.forEach(r => {
+    const a = r.atendente ?? 'Sem Atendente';
+    const min = r.sla_minutes ?? calcMinutes(r.horario_inicio, r.horario_fim);
+    if (min !== null && min > 0) {
+      if (!map[a]) map[a] = { sum: 0, count: 0 };
+      map[a].sum += min;
+      map[a].count++;
+    }
+  });
+  return Object.entries(map)
+    .map(([name, d]) => ({ name, tempoMedio: d.count > 0 ? Math.round(d.sum / d.count) : 0, count: d.count }))
+    .sort((a, b) => a.tempoMedio - b.tempoMedio);
+}
+
+export function mediaPorTurno<T extends { turno: string | null; status: string | null }>(records: T[]) {
+  const map: Record<string, { total: number; validados: number }> = {};
+  records.forEach(r => {
+    const t = r.turno ?? 'Outros';
+    if (!map[t]) map[t] = { total: 0, validados: 0 };
+    map[t].total++;
+    if (r.status === 'Validado') map[t].validados++;
+  });
+  return Object.entries(map)
+    .map(([turno, d]) => ({ turno, ...d, media: d.total > 0 ? Math.round((d.validados / d.total) * 100) : 0 }))
+    .sort((a, b) => a.turno.localeCompare(b.turno));
+}
+
+export function mediaPorAtendente<T extends { atendente: string | null; status: string | null }>(records: T[]) {
+  const map: Record<string, { total: number; validados: number }> = {};
+  records.forEach(r => {
+    const a = r.atendente ?? 'Sem Atendente';
+    if (!map[a]) map[a] = { total: 0, validados: 0 };
+    map[a].total++;
+    if (r.status === 'Validado') map[a].validados++;
+  });
+  return Object.entries(map)
+    .map(([name, d]) => ({ name, ...d, media: d.total > 0 ? Math.round((d.validados / d.total) * 100) : 0 }))
+    .sort((a, b) => b.total - a.total);
 }
