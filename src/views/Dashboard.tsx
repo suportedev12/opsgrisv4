@@ -316,7 +316,7 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
             <option value="">Status</option>
             <option value="Validado">Validado</option>
             <option value="Pendência">Pendência</option>
-            <option value="Andamento">Andamento</option>
+            <option value="Reprovado">Reprovado</option>
             {baseView === 'cadastro' && <option value="Recusado">Recusado</option>}
           </select>
           {(filters.turno || filters.atendente || filters.status) && (
@@ -460,7 +460,7 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
             <KpiCard title="Validados" value={chkKpis.validados} icon={<CheckCircle2 className="h-5 w-5" />} accent="green" subtitle={`${chkKpis.eficiencia}% do total`} />
             <KpiCard title="Pendências" value={chkKpis.pendencias} icon={<AlertTriangle className="h-5 w-5" />} accent="amber" subtitle={chkKpis.pendencias > 0 ? 'Requer atenção' : 'Sem pendências'} />
             <KpiCard title="Vencidos" value={chkKpis.vencidos} icon={<XCircle className="h-5 w-5" />} accent="red" subtitle={chkKpis.vencidos > 0 ? 'Checklist vencido' : 'Nenhum'} />
-            <KpiCard title="Tempo Médio" value={`${chkKpis.tempoMedioMin}min`} icon={<Clock className="h-5 w-5" />} accent="blue" subtitle="Por atendimento" />
+            <KpiCard title="Reprovados" value={chkKpis.reprovados} icon={<XCircle className="h-5 w-5" />} accent="red" subtitle={chkKpis.reprovados > 0 ? 'Verificar motivo' : 'Nenhum'} />
           </div>
 
           {/* Média por turno + Tempo médio por operador */}
@@ -548,8 +548,8 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
               <DonutChart
                 segments={[
                   { label: 'Validado', value: chkKpis.validados, color: '#10b981' },
-                  { label: 'Andamento', value: chkKpis.andamento, color: '#3b82f6' },
                   { label: 'Pendência', value: chkKpis.pendencias, color: '#f59e0b' },
+                  { label: 'Reprovado', value: chkKpis.reprovados, color: '#ef4444' },
                 ].filter(s => s.value > 0)}
                 size={220}
               />

@@ -8,8 +8,8 @@ import type { ReactNode } from 'react';
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; icon: ReactNode }> = {
   'Validado':  { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-300', icon: <span className="h-3 w-3 rounded-full border-2 border-emerald-500 flex items-center justify-center"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /></span> },
-  'Andamento': { bg: 'bg-blue-50',    text: 'text-blue-600',    border: 'border-blue-300',    icon: <span className="text-[10px]">⏱</span> },
   'Pendência': { bg: 'bg-amber-50',   text: 'text-amber-600',   border: 'border-amber-300',   icon: <span className="text-[10px]">⚠</span> },
+  'Reprovado': { bg: 'bg-red-50',     text: 'text-red-600',     border: 'border-red-300',     icon: <span className="text-[10px]">✕</span> },
 };
 
 function StatusBadge({ status }: { status: string | null }) {
@@ -34,7 +34,7 @@ const EMPTY = {
   mes: '', turno: '', operacao: '', classificacao: '', data: '', horario_inicio: '',
   protocolo: '', eta_origem: '', motorista: '', telefone: '', segundo_motorista: '',
   placa_cavalo: '', placa_carreta: '', atendente: '', obs: '', tentativa1: '',
-  tentativa2: '', tentativa3: '', status: 'Andamento', pendencia: '',
+  tentativa2: '', tentativa3: '', status: 'Reprovado', pendencia: '',
   vencimento_checklist: '', horario_fim: '', semana: '',
 };
 
@@ -173,7 +173,7 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
       </div>
 
       {/* Filters */}
-      <FilterBar filters={filters} onChange={onFiltersChange} atendentes={atendentes} placeholder="Pesquisar por motorista, protocolo, placa..." statuses={[{ value: 'Andamento', label: 'Andamento' }, { value: 'Validado', label: 'Validado' }, { value: 'Pendência', label: 'Pendência' }]} />
+      <FilterBar filters={filters} onChange={onFiltersChange} atendentes={atendentes} placeholder="Pesquisar por motorista, protocolo, placa..." statuses={[{ value: 'Validado', label: 'Validado' }, { value: 'Pendência', label: 'Pendência' }, { value: 'Reprovado', label: 'Reprovado' }]} />
 
       {/* Table */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -306,8 +306,8 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
               })}
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Status</label>
-                <select value={form.status ?? 'Andamento'} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
-                  <option>Andamento</option>
+                <select value={form.status ?? 'Reprovado'} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
+                  <option>Reprovado</option>
                   <option>Validado</option>
                   <option>Pendência</option>
                 </select>

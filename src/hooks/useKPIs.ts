@@ -15,7 +15,7 @@ interface ChecklistKPI {
   total: number;
   validados: number;
   pendencias: number;
-  andamento: number;
+  reprovados: number;
   eficiencia: number;
   vencidos: number;
   tempoMedioMin: number;
@@ -54,7 +54,7 @@ export function useChecklistKPIs(records: ChecklistOperacional[]): ChecklistKPI 
     const total = records.length;
     const validados = records.filter(r => r.status === 'Validado').length;
     const pendencias = records.filter(r => r.status === 'Pendência').length;
-    const andamento = records.filter(r => r.status === 'Andamento').length;
+    const reprovados = records.filter(r => r.status === 'Reprovado').length;
     const eficiencia = total > 0 ? Math.round((validados / total) * 100) : 0;
 
     const today = new Date().toISOString().split('T')[0];
@@ -69,7 +69,7 @@ export function useChecklistKPIs(records: ChecklistOperacional[]): ChecklistKPI 
       ? Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length)
       : 0;
 
-    return { total, validados, pendencias, andamento, eficiencia, vencidos, tempoMedioMin };
+    return { total, validados, pendencias, reprovados, eficiencia, vencidos, tempoMedioMin };
   }, [records]);
 }
 
