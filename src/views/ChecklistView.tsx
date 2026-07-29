@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import type { ChecklistOperacional, Filters, UserProfile } from '@/types';
 import { filterChecklists, getUniqueAtendentes } from '@/utils/filters';
 import { FilterBar } from '@/components/FilterBar';
-import { Pencil, Trash2, Save, X, Truck, PhoneCall } from 'lucide-react';
+import { Pencil, Trash2, Save, X, Truck, PhoneCall, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; icon: ReactNode }> = {
@@ -94,6 +94,9 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormType>(EMPTY);
   const [atendenteOptions, setAtendenteOptions] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -127,29 +130,53 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
 
   const nextTentativaNum = !form.tentativa1 ? 1 : !form.tentativa2 ? 2 : !form.tentativa3 ? 3 : null;
 
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const save = async () => {
+    setSaving(true);
+    setSaveError(null);
     const now = nowTime();
     const payload = { ...form };
     if (!editing) {
       payload.horario_inicio = now;
+      const { data: { user } } = await supabase.auth.getUser();
+      (payload as Record<string, unknown>)['user_id'] = user?.id ?? null;
     }
     payload.horario_fim = now;
-    if (editing) {
-      await supabase.from('checklist_records').update(payload).eq('id', editing.id);
-    } else {
-      await supabase.from('checklist_records').insert(payload);
+    try {
+      const { error } = editing
+        ? await supabase.from('checklist_records').update(payload).eq('id', editing.id)
+        : await supabase.from('checklist_records').insert(payload);
+      if (error) {
+        setSaveError(`Erro ao salvar: ${error.message}`);
+        setSaving(false);
+        return;
+      }
+      setShowForm(false); setEditing(null); setForm(EMPTY); await load();
+      showToast(editing ? 'Checklist atualizado com sucesso!' : 'Checklist criado com sucesso!');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Erro inesperado ao salvar');
+      setSaving(false);
     }
-    setShowForm(false); setEditing(null); setForm(EMPTY); await load();
   };
 
   const remove = async (id: string) => {
     if (!window.confirm('Remover este registro?')) return;
-    await supabase.from('checklist_records').delete().eq('id', id);
+    const { error } = await supabase.from('checklist_records').delete().eq('id', id);
+    if (error) {
+      showToast(`Erro ao remover: ${error.message}`);
+      return;
+    }
     await load();
+    showToast('Registro removido.');
   };
 
   const startEdit = (r: ChecklistOperacional) => {
     setEditing(r);
+    setSaveError(null);
     const { id, user_id, created_at, sla_minutes, ...rest } = r;
     const base = { ...EMPTY, ...Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, v ?? ''])) } as FormType;
     if (!base.atendente) base.atendente = profile?.nome ?? '';
@@ -158,7 +185,7 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
     setShowForm(true);
   };
 
-  const startNew = () => { setEditing(null); setForm({ ...EMPTY, data: todayStr(), mes: currentMes(), atendente: profile?.nome ?? '', turno: profile?.turno ?? '' }); setShowForm(true); };
+  const startNew = () => { setEditing(null); setSaveError(null); setForm({ ...EMPTY, data: todayStr(), mes: currentMes(), atendente: profile?.nome ?? '', turno: profile?.turno ?? '' }); setShowForm(true); };
 
   const fmtDate = (d: string | null) => {
     if (!d) return '-';
@@ -373,11 +400,24 @@ export function ChecklistView({ filters, onFiltersChange, showNewForm, onNewForm
                 </div>
               </div>
             </div>
+            {saveError && (
+              <div className="mx-6 mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+                <AlertCircle className="h-4 w-4 shrink-0" /> {saveError}
+              </div>
+            )}
             <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
               <button onClick={() => setShowForm(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
-              <button onClick={save} className="flex items-center gap-1.5 rounded-lg bg-[#F47920] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d96a15]"><Save className="h-4 w-4" /> Salvar</button>
+              <button onClick={save} disabled={saving} className="flex items-center gap-1.5 rounded-lg bg-[#F47920] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d96a15] disabled:opacity-50">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {saving ? 'Salvando...' : 'Salvar'}
+              </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg">
+          <CheckCircle2 className="h-4 w-4" /> {toast}
         </div>
       )}
     </div>

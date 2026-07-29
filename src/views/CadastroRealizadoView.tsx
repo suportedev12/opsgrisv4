@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import type { CadastroRealizado, Filters, UserProfile } from '@/types';
 import { filterCadastros, getUniqueAtendentes } from '@/utils/filters';
 import { FilterBar } from '@/components/FilterBar';
-import { Pencil, Trash2, Save, X, FileCheck, PhoneCall } from 'lucide-react';
+import { Pencil, Trash2, Save, X, FileCheck, PhoneCall, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; icon: ReactNode }> = {
@@ -45,6 +45,14 @@ const EMPTY = {
 
 function todayStr(): string { return new Date().toISOString().split('T')[0]; }
 function currentMes(): string { return MESES[new Date().getMonth()]; }
+function calcSemana(dataStr: string): string {
+  if (!dataStr) return '';
+  const d = new Date(dataStr + 'T00:00');
+  if (isNaN(d.getTime())) return '';
+  const day = d.getDate();
+  const semana = Math.ceil(day / 7);
+  return `Semana ${semana}`;
+}
 
 function nowTime(): string {
   const d = new Date();
@@ -97,6 +105,9 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormType>(EMPTY);
   const [atendenteOptions, setAtendenteOptions] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,39 +131,71 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
   const filtered = filterCadastros(scopedRecords, filters);
   const atendentes = isManager ? getUniqueAtendentes(records, []) : [];
 
+  // Active slot = first empty tentativa; past slots are filled or skipped, future slots are locked
+  const activeSlot = !form.tentativa1 ? 0 : !form.tentativa2 ? 1 : !form.tentativa3 ? 2 : 3;
+
   const registrarTentativa = () => {
     const now = nowTime();
-    if (!form.tentativa1) setForm(f => ({ ...f, tentativa1: now }));
-    else if (!form.tentativa2) setForm(f => ({ ...f, tentativa2: now }));
-    else if (!form.tentativa3) setForm(f => ({ ...f, tentativa3: now }));
+    if (!form.tentativa1) { setForm(f => ({ ...f, tentativa1: now })); return; }
+    if (!form.tentativa2) { setForm(f => ({ ...f, tentativa2: now })); return; }
+    if (!form.tentativa3) { setForm(f => ({ ...f, tentativa3: now })); }
   };
 
-  const nextTentativaNum = !form.tentativa1 ? 1 : !form.tentativa2 ? 2 : !form.tentativa3 ? 3 : null;
+  const nextTentativaNum = activeSlot < 3 ? activeSlot + 1 : null;
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const save = async () => {
+    setSaving(true);
+    setSaveError(null);
     const now = nowTime();
-    const payload = { ...form };
+    const payload = { ...form } as Record<string, unknown>;
+    payload['semana'] = calcSemana(form.data);
     if (!editing) {
-      payload.horario_inicio = now;
+      payload['horario_inicio'] = now;
+      const { data: { user } } = await supabase.auth.getUser();
+      payload['user_id'] = user?.id ?? null;
     }
-    payload.horario_fim = now;
-    if (editing) {
-      await supabase.from('cadastro_records').update(payload).eq('id', editing.id);
-    } else {
-      await supabase.from('cadastro_records').insert(payload);
+    payload['horario_fim'] = now;
+    // Strip empty strings so DB constraints and nullable columns receive NULL
+    const cleanPayload = Object.fromEntries(
+      Object.entries(payload).map(([k, v]) => [k, v === '' ? null : v])
+    );
+    try {
+      const { error } = editing
+        ? await supabase.from('cadastro_records').update(cleanPayload).eq('id', editing.id)
+        : await supabase.from('cadastro_records').insert(cleanPayload);
+      if (error) {
+        setSaveError(`Erro ao salvar: ${error.message}`);
+        setSaving(false);
+        return;
+      }
+      setShowForm(false); setEditing(null); setForm(EMPTY); await load();
+      showToast(editing ? 'Cadastro atualizado com sucesso!' : 'Cadastro criado com sucesso!');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Erro inesperado ao salvar');
+      setSaving(false);
     }
-    setShowForm(false); setEditing(null); setForm(EMPTY); await load();
   };
 
   const remove = async (id: string) => {
     if (!window.confirm('Remover este registro?')) return;
-    await supabase.from('cadastro_records').delete().eq('id', id);
+    const { error } = await supabase.from('cadastro_records').delete().eq('id', id);
+    if (error) {
+      showToast(`Erro ao remover: ${error.message}`);
+      return;
+    }
     await load();
+    showToast('Registro removido.');
   };
 
   const startEdit = (r: CadastroRealizado) => {
     setEditing(r);
-    const { id, user_id, created_at, sla_minutes, ...rest } = r;
+    setSaveError(null);
+    const { id, user_id, created_at, sla_minutes, edit_count, ...rest } = r;
     const base = { ...EMPTY, ...Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, v ?? ''])) } as FormType;
     if (!base.atendente) base.atendente = profile?.nome ?? '';
     if (!base.turno) base.turno = profile?.turno ?? '';
@@ -160,7 +203,7 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
     setShowForm(true);
   };
 
-  const startNew = () => { setEditing(null); setForm({ ...EMPTY, data: todayStr(), mes: currentMes(), atendente: profile?.nome ?? '', turno: profile?.turno ?? '' }); setShowForm(true); };
+  const startNew = () => { setEditing(null); setSaveError(null); setForm({ ...EMPTY, data: todayStr(), mes: currentMes(), atendente: profile?.nome ?? '', turno: profile?.turno ?? '' }); setShowForm(true); };
 
   const fmtDate = (d: string | null) => {
     if (!d) return '-';
@@ -348,14 +391,21 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                     {nextTentativaNum !== null ? `Registrar Tentativa ${nextTentativaNum}` : 'Todas as tentativas registradas'}
                   </button>
                   <div className="flex gap-3">
-                    {[form.tentativa1, form.tentativa2, form.tentativa3].map((t, i) => (
-                      <div key={i} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium ${
-                        t ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-400'
-                      }`}>
-                        <span className="font-semibold">T{i + 1}</span>
-                        <span>{t || '—:——'}</span>
-                      </div>
-                    ))}
+                    {([form.tentativa1, form.tentativa2, form.tentativa3] as (string | null)[]).map((t, i) => {
+                      const filled = !!t;
+                      const isActive = i === activeSlot;
+                      const isFuture = i > activeSlot;
+                      return (
+                        <div key={i} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium ${
+                          filled ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : isActive ? 'border-[#F47920]/40 bg-orange-50 text-[#F47920]'
+                          : 'border-gray-200 bg-gray-50 text-gray-300'
+                        }`}>
+                          <span className="font-semibold">T{i + 1}</span>
+                          <span>{filled ? t : isActive ? '——:——' : isFuture ? '🔒' : '—:——'}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -379,11 +429,24 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                 </div>
               </div>
             </div>
+            {saveError && (
+              <div className="mx-6 mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+                <AlertCircle className="h-4 w-4 shrink-0" /> {saveError}
+              </div>
+            )}
             <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
               <button onClick={() => setShowForm(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
-              <button onClick={save} className="flex items-center gap-1.5 rounded-lg bg-[#F47920] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d96a15]"><Save className="h-4 w-4" /> Salvar</button>
+              <button onClick={save} disabled={saving} className="flex items-center gap-1.5 rounded-lg bg-[#F47920] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d96a15] disabled:opacity-50">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {saving ? 'Salvando...' : 'Salvar'}
+              </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg">
+          <CheckCircle2 className="h-4 w-4" /> {toast}
         </div>
       )}
     </div>

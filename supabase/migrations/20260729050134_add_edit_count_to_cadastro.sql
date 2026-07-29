@@ -1,0 +1,1 @@
+ALTER TABLE cadastro_records ADD COLUMN IF NOT EXISTS edit_count integer NOT NULL DEFAULT 0;

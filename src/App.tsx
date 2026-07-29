@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { LayoutDashboard, FileCheck, Truck, TrendingUp, Plus, Users, LogOut, ShieldCheck, Menu, X, ChevronRight, Target } from 'lucide-react';
 import type { ActiveTab, Filters } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
-import { fetchProfile, storeProfile } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 import { Login } from '@/views/Login';
 import { Dashboard } from '@/views/Dashboard';
 import { CadastroRealizadoView } from '@/views/CadastroRealizadoView';
@@ -15,7 +15,7 @@ import { ForcePasswordChange } from '@/views/ForcePasswordChange';
 const EMPTY_FILTERS: Filters = { turno: '', atendente: '', status: '', dataInicio: '', dataFim: '', search: '' };
 
 function App() {
-  const { session, profile, loading, signOut } = useAuth();
+  const { session, profile, loading, signOut, refreshProfile } = useAuth();
   const [active, setActive] = useState<ActiveTab>('dashboard');
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [newTrigger, setNewTrigger] = useState(0);
@@ -82,11 +82,28 @@ function App() {
     return <Login />;
   }
 
+  // Session exists but no profile row found — likely email not confirmed or account issue
+  if (!profile) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#0f1923] px-4 text-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-700 border-t-[#F47920]" />
+        <p className="text-sm text-gray-400">Carregando perfil...</p>
+        <p className="max-w-sm text-xs text-gray-600">
+          Se esta tela não mudar, entre em contato com o administrador para verificar se sua conta foi ativada.
+        </p>
+        <button
+          onClick={() => supabase.auth.signOut()}
+          className="mt-2 rounded-lg border border-white/10 px-4 py-2 text-xs text-gray-400 hover:text-white"
+        >
+          Voltar ao login
+        </button>
+      </div>
+    );
+  }
+
   if (profile?.must_change_password) {
     return <ForcePasswordChange userName={profile.nome ?? 'Usuário'} onDone={async () => {
-      const fresh = await fetchProfile(profile.id);
-      storeProfile(fresh);
-      window.location.reload();
+      await refreshProfile(profile.id);
     }} />;
   }
 
@@ -106,16 +123,14 @@ function App() {
         className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-[#0f1923] transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         {/* Brand */}
-        <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 overflow-hidden shrink-0">
-            <img src="/losung copy.png" alt="Lösung Express" className="h-8 w-auto object-contain" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+        <div className="flex flex-col items-center gap-3 border-b border-white/10 px-5 py-5">
+          <img src="/losung copy.png" alt="Lösung Express" className="h-16 w-auto object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.4)]" />
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1.5">
               <span className="text-sm font-bold tracking-wide text-white">OPS GRIS</span>
               <span className="rounded border border-[#F47920]/40 bg-[#F47920]/15 px-1 py-0.5 text-[8px] font-bold uppercase tracking-widest text-[#F47920]">Torre</span>
             </div>
-            <p className="truncate text-[10px] text-gray-500">Gerenciamento de Risco</p>
+            <p className="mt-0.5 text-[10px] text-gray-500">Gerenciamento de Risco</p>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="ml-auto rounded p-1 text-gray-400 hover:text-white lg:hidden">
             <X className="h-5 w-5" />

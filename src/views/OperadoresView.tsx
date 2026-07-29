@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { UserProfile } from '@/types';
-import { Users, Shield, ShieldCheck, Check, X, Mail, Loader2, Save, Clock, KeyRound, Pencil, Crown } from 'lucide-react';
+import { Users, Shield, ShieldCheck, Check, X, Mail, Loader2, Save, Clock, KeyRound, Pencil, Crown, MailCheck } from 'lucide-react';
 
 const inputCls = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-[#F47920] focus:outline-none focus:ring-1 focus:ring-[#F47920]/20';
 
@@ -29,8 +29,14 @@ export function OperadoresView({ profile }: Props) {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState('');
   const [resetSuccess, setResetSuccess] = useState('');
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [confirmMsg, setConfirmMsg] = useState('');
+  const [forceUser, setForceUser] = useState<UserProfile | null>(null);
+  const [forceLoading, setForceLoading] = useState(false);
+  const [forceMsg, setForceMsg] = useState('');
 
   const isMaster = profile?.is_master ?? false;
+  const isManager = profile?.is_admin ?? false;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,24 +73,59 @@ export function OperadoresView({ profile }: Props) {
     setInviteError('');
     setInviteLoading(true);
     try {
-      await callAdminApi({ action: 'create_user', email: inviteEmail, password: invitePwd, nome: inviteNome });
+      await callAdminApi({
+        action: 'create_user',
+        new_email: inviteEmail,
+        new_password: invitePwd,
+        new_name: inviteNome,
+      });
       setShowInvite(false);
       setInviteEmail(''); setInviteNome(''); setInvitePwd('');
-      setTimeout(() => load(), 800);
+      setTimeout(() => load(), 1000);
     } catch (err) {
-      setInviteError(err instanceof Error ? err.message : 'Erro ao cadastrar operador.');
+      setInviteError(err instanceof Error ? err.message : 'Erro ao criar operador.');
     } finally {
       setInviteLoading(false);
     }
   };
 
+  const handleConfirmAll = async () => {
+    setConfirmLoading(true);
+    setConfirmMsg('');
+    try {
+      const session = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/confirm-all-users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.data.session?.access_token ?? ''}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? '',
+        },
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error ?? `Erro ${res.status}`);
+      setConfirmMsg(json.message ?? 'Emails confirmados com sucesso.');
+    } catch (err) {
+      setConfirmMsg(err instanceof Error ? err.message : 'Erro ao confirmar emails.');
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
   const callAdminApi = async (payload: Record<string, unknown>) => {
-    const { data, error } = await supabase.functions.invoke('admin-user-management', {
-      body: payload,
+    const { data: session } = await supabase.auth.getSession();
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL ?? supabase.supabaseUrl}/functions/v1/admin-user-management`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.session?.access_token ?? ''}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? supabase.supabaseKey,
+      },
+      body: JSON.stringify(payload),
     });
-    if (error) throw new Error(error.message ?? 'Erro na chamada à função.');
-    if (data?.error) throw new Error(data.error);
-    return data;
+    const json = await res.json();
+    if (!res.ok || json.error) throw new Error(json.error ?? `Erro ${res.status}`);
+    return json;
   };
 
   const saveEdit = async () => {
@@ -103,6 +144,21 @@ export function OperadoresView({ profile }: Props) {
       setEditError(err instanceof Error ? err.message : 'Erro ao atualizar.');
     } finally {
       setEditLoading(false);
+    }
+  };
+
+  const doForcePasswordChange = async () => {
+    if (!forceUser) return;
+    setForceLoading(true);
+    setForceMsg('');
+    try {
+      await callAdminApi({ action: 'force_password_change', targetUserId: forceUser.id });
+      setForceMsg('Liberado! O usuário deverá criar uma nova senha no próximo login.');
+      await load();
+    } catch (err) {
+      setForceMsg(err instanceof Error ? err.message : 'Erro ao liberar troca de senha.');
+    } finally {
+      setForceLoading(false);
     }
   };
 
@@ -141,13 +197,33 @@ export function OperadoresView({ profile }: Props) {
           <h2 className="mt-0.5 text-2xl font-bold text-gray-900">Operadores & Permissões</h2>
           <p className="mt-0.5 text-sm text-gray-500">Defina quais abas cada operador pode visualizar e editar. Novos operadores começam com todas as permissões ativas.</p>
         </div>
-        <button
-          onClick={() => setShowInvite(true)}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-[#F47920] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#F47920]/20 transition-colors hover:bg-[#d96a15]"
-        >
-          <Users className="h-4 w-4" /> + NOVO OPERADOR
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {(isMaster || isManager) && (
+            <button
+              onClick={handleConfirmAll}
+              disabled={confirmLoading}
+              className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-60"
+            >
+              {confirmLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MailCheck className="h-4 w-4" />}
+              Confirmar Emails
+            </button>
+          )}
+          <button
+            onClick={() => setShowInvite(true)}
+            className="flex items-center gap-2 rounded-lg bg-[#F47920] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#F47920]/20 transition-colors hover:bg-[#d96a15]"
+          >
+            <Users className="h-4 w-4" /> + NOVO OPERADOR
+          </button>
+        </div>
       </div>
+
+      {confirmMsg && (
+        <div className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs ${confirmMsg.includes('Erro') ? 'border-red-200 bg-red-50 text-red-600' : 'border-emerald-200 bg-emerald-50 text-emerald-600'}`}>
+          <MailCheck className="h-4 w-4 shrink-0" />
+          <span>{confirmMsg}</span>
+          <button onClick={() => setConfirmMsg('')} className="ml-auto text-gray-400 hover:text-gray-600"><X className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
 
       {isMaster && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-700">
@@ -241,6 +317,7 @@ export function OperadoresView({ profile }: Props) {
                       <div className="flex items-center justify-center gap-1.5">
                         <button onClick={() => { setEditUser(p); setEditNome(p.nome ?? ''); setEditEmail(p.email ?? ''); }} className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700" title="Editar nome/email"><Pencil className="h-4 w-4" /></button>
                         <button onClick={() => { setResetUser(p); setResetPwd(''); setResetError(''); setResetSuccess(''); }} className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-amber-50 hover:text-amber-600" title="Redefinir senha"><KeyRound className="h-4 w-4" /></button>
+                        <button onClick={() => { setForceUser(p); setForceMsg(''); }} className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-600" title="Liberar troca de senha"><ShieldCheck className="h-4 w-4" /></button>
                       </div>
                     </td>
                   )}
@@ -314,6 +391,36 @@ export function OperadoresView({ profile }: Props) {
                 <button type="button" onClick={saveEdit} disabled={editLoading} className="flex items-center gap-1.5 rounded-lg bg-[#F47920] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d96a15] disabled:opacity-60">
                   {editLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvar
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Force password change modal (master only) */}
+      {forceUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Liberar Troca de Senha</h3>
+                <p className="text-xs text-gray-400">Ao liberar, <strong>{forceUser.nome}</strong> será obrigado a criar uma nova senha no próximo login.</p>
+              </div>
+              <button onClick={() => setForceUser(null)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="space-y-4 p-6">
+              {forceMsg ? (
+                <p className={`rounded-lg border px-3 py-2 text-xs ${forceMsg.includes('Erro') ? 'border-red-200 bg-red-50 text-red-600' : 'border-emerald-200 bg-emerald-50 text-emerald-600'}`}>{forceMsg}</p>
+              ) : (
+                <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs text-blue-600">O usuário continua com a senha atual. Ao logar, será redirecionado para criar uma nova senha.</p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setForceUser(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">{forceMsg ? 'Fechar' : 'Cancelar'}</button>
+                {!forceMsg && (
+                  <button type="button" onClick={doForcePasswordChange} disabled={forceLoading} className="flex items-center gap-1.5 rounded-lg bg-[#F47920] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d96a15] disabled:opacity-60">
+                    {forceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Liberar Troca
+                  </button>
+                )}
               </div>
             </div>
           </div>

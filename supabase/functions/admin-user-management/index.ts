@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,17 +6,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-Deno.serve(async (req: Request) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+    if (!supabaseUrl || !serviceRoleKey) {
       return new Response(
         JSON.stringify({ error: "Server not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -31,32 +30,34 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Client with the caller's token to verify their identity
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
+    // Verify the caller is authenticated
+    const meRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: { Authorization: authHeader, apikey: serviceRoleKey },
     });
-
-    const { data: { user }, error: userError } = await userClient.auth.getUser();
-    if (userError || !user) {
+    if (!meRes.ok) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+    const me = await meRes.json();
 
-    // Admin client with service role key (bypasses RLS)
-    const adminClient = createClient(supabaseUrl, serviceRoleKey);
-
-    // Check if caller is a master admin
-    const { data: profile } = await adminClient
-      .from("atendentes")
-      .select("is_master, is_admin")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (!profile?.is_master) {
+    // Check if caller is admin or master
+    const profileRes = await fetch(
+      `${supabaseUrl}/rest/v1/atendentes?id=eq.${me.id}&select=is_master,is_admin`,
+      {
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    const profileData = await profileRes.json();
+    const callerProfile = profileData?.[0];
+    if (!callerProfile?.is_master && !callerProfile?.is_admin) {
       return new Response(
-        JSON.stringify({ error: "Apenas o administrador master pode realizar esta ação." }),
+        JSON.stringify({ error: "Apenas administradores podem realizar esta ação." }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -65,39 +66,72 @@ Deno.serve(async (req: Request) => {
     const { action, targetUserId } = body;
 
     if (action === "create_user") {
-      const { email, password, nome } = body;
-      if (!email || !password || !nome) {
+      const { new_email, new_password, new_name } = body;
+      if (!new_email || !new_email.includes("@")) {
         return new Response(
-          JSON.stringify({ error: "Email, senha e nome são obrigatórios." }),
+          JSON.stringify({ error: "Email inválido." }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      if (password.length < 6) {
+      if (!new_password || new_password.length < 6) {
         return new Response(
           JSON.stringify({ error: "A senha deve ter no mínimo 6 caracteres." }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { nome },
+
+      // Create auth user with email already confirmed
+      const createRes = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+        method: "POST",
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: new_email,
+          password: new_password,
+          email_confirm: true,
+          user_metadata: { nome: new_name ?? "" },
+        }),
       });
-      if (createError) {
+      if (!createRes.ok) {
+        const err = await createRes.json();
         return new Response(
-          JSON.stringify({ error: createError.message }),
+          JSON.stringify({ error: err.message ?? "Erro ao criar usuário." }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      if (newUser.user) {
-        await adminClient
-          .from("atendentes")
-          .update({ must_change_password: true, nome })
-          .eq("id", newUser.user.id);
+      const created = await createRes.json();
+
+      if (created.id) {
+        // Upsert row in atendentes — handles both trigger-created and missing rows
+        await fetch(`${supabaseUrl}/rest/v1/atendentes`, {
+          method: "POST",
+          headers: {
+            apikey: serviceRoleKey,
+            Authorization: `Bearer ${serviceRoleKey}`,
+            "Content-Type": "application/json",
+            Prefer: "resolution=merge-duplicates",
+          },
+          body: JSON.stringify({
+            id: created.id,
+            nome: new_name ?? "",
+            email: new_email,
+            is_admin: false,
+            is_master: false,
+            active: true,
+            can_add_checklist: true,
+            can_add_cadastro: true,
+            can_view_dashboard: false,
+            can_manage_users: false,
+            must_change_password: true,
+          }),
+        });
       }
+
       return new Response(
-        JSON.stringify({ success: true, userId: newUser.user?.id }),
+        JSON.stringify({ success: true, message: "Operador criado com sucesso. Email já confirmado." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -110,19 +144,31 @@ Deno.serve(async (req: Request) => {
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      const { error: pwdError } = await adminClient.auth.admin.updateUserById(targetUserId, {
-        password: new_password,
+      const updateRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${targetUserId}`, {
+        method: "PUT",
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ password: new_password }),
       });
-      if (pwdError) {
+      if (!updateRes.ok) {
+        const err = await updateRes.json();
         return new Response(
-          JSON.stringify({ error: pwdError.message }),
+          JSON.stringify({ error: err.message ?? "Erro ao alterar senha." }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      await adminClient
-        .from("atendentes")
-        .update({ must_change_password: true })
-        .eq("id", targetUserId);
+      await fetch(`${supabaseUrl}/rest/v1/atendentes?id=eq.${targetUserId}`, {
+        method: "PATCH",
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ must_change_password: true }),
+      });
       return new Response(
         JSON.stringify({ success: true, message: "Senha alterada. Usuário deverá alterá-la no próximo login." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -137,21 +183,72 @@ Deno.serve(async (req: Request) => {
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      const { error: emailError } = await adminClient.auth.admin.updateUserById(targetUserId, {
-        email: new_email,
+      const updateRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${targetUserId}`, {
+        method: "PUT",
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: new_email }),
       });
-      if (emailError) {
+      if (!updateRes.ok) {
+        const err = await updateRes.json();
         return new Response(
-          JSON.stringify({ error: emailError.message }),
+          JSON.stringify({ error: err.message ?? "Erro ao alterar email." }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      await adminClient
-        .from("atendentes")
-        .update({ email: new_email })
-        .eq("id", targetUserId);
+      await fetch(`${supabaseUrl}/rest/v1/atendentes?id=eq.${targetUserId}`, {
+        method: "PATCH",
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: new_email }),
+      });
       return new Response(
         JSON.stringify({ success: true, message: "Email atualizado com sucesso." }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (action === "confirm_email") {
+      const updateRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${targetUserId}`, {
+        method: "PUT",
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email_confirm: true }),
+      });
+      if (!updateRes.ok) {
+        const err = await updateRes.json();
+        return new Response(
+          JSON.stringify({ error: err.message ?? "Erro ao confirmar email." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({ success: true, message: "Email confirmado com sucesso." }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (action === "force_password_change") {
+      await fetch(`${supabaseUrl}/rest/v1/atendentes?id=eq.${targetUserId}`, {
+        method: "PATCH",
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ must_change_password: true }),
+      });
+      return new Response(
+        JSON.stringify({ success: true, message: "Usuário deverá criar uma nova senha no próximo login." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -164,10 +261,15 @@ Deno.serve(async (req: Request) => {
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      await adminClient
-        .from("atendentes")
-        .update({ nome: new_name.trim() })
-        .eq("id", targetUserId);
+      await fetch(`${supabaseUrl}/rest/v1/atendentes?id=eq.${targetUserId}`, {
+        method: "PATCH",
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ nome: new_name.trim() }),
+      });
       return new Response(
         JSON.stringify({ success: true, message: "Nome atualizado com sucesso." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -180,7 +282,7 @@ Deno.serve(async (req: Request) => {
     );
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: err.message ?? "Erro interno do servidor." }),
+      JSON.stringify({ error: (err as Error).message ?? "Erro interno do servidor." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }

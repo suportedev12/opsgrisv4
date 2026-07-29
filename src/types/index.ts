@@ -27,6 +27,7 @@ export interface CadastroRealizado {
   obs: string | null;
   semana: string | null;
   sla_minutes: number | null;
+  edit_count: number;
   created_at: string;
 }
 
