@@ -299,12 +299,9 @@ export function Dashboard({ filters, onFiltersChange, onNavigate, profile, isMan
         <div className="flex items-center gap-2">
           <select value={filters.turno} onChange={e => onFiltersChange({ ...filters, turno: e.target.value })} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 shadow-sm focus:border-[#F47920] focus:outline-none">
             <option value="">Turnos</option>
-            <option value="1T">1º Turno</option>
-            <option value="2T">2º Turno</option>
-            <option value="3T">3º Turno</option>
-            <option value="Manhã">Manhã</option>
-            <option value="Tarde">Tarde</option>
-            <option value="Noite">Noite</option>
+            <option value="T1">T1</option>
+            <option value="T2">T2</option>
+            <option value="T3">T3</option>
           </select>
           {isManagerUser && (
             <select value={filters.atendente} onChange={e => onFiltersChange({ ...filters, atendente: e.target.value })} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 shadow-sm focus:border-[#F47920] focus:outline-none">

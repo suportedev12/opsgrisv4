@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS atendentes (
   can_view_dashboard boolean NOT NULL DEFAULT true,
   can_manage_users boolean NOT NULL DEFAULT false,
   active boolean NOT NULL DEFAULT true,
+  turno text NOT NULL DEFAULT '',
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -91,6 +92,7 @@ CREATE POLICY "delete_atendente_admin" ON atendentes FOR DELETE
   );
 
 CREATE INDEX IF NOT EXISTS idx_atendentes_active ON atendentes(active);
+CREATE INDEX IF NOT EXISTS idx_atendentes_turno ON atendentes(turno);
 
 -- =====================================================================
 -- 2. TABELA: cadastro_records (cadastros realizados)
@@ -418,7 +420,23 @@ ALTER TABLE checklist_records ADD CONSTRAINT chk_checklist_status
   CHECK (status IN ('Validado', 'Pendência', 'Reprovado'));
 
 -- =====================================================================
--- 8. PROMOVER PRIMEIRO USUÁRIO A ADMIN (executar depois do signup)
+-- 8. PADRONIZAR NOMES DE TURNO (T1, T2, T3)
+-- =====================================================================
+-- Converte valores antigos de turno para o novo padrão T1/T2/T3
+UPDATE atendentes SET turno = 'T1' WHERE turno IN ('Manhã', '1T');
+UPDATE atendentes SET turno = 'T2' WHERE turno IN ('Tarde', '2T');
+UPDATE atendentes SET turno = 'T3' WHERE turno IN ('Noite', '3T');
+
+UPDATE cadastro_records SET turno = 'T1' WHERE turno IN ('Manhã', '1T');
+UPDATE cadastro_records SET turno = 'T2' WHERE turno IN ('Tarde', '2T');
+UPDATE cadastro_records SET turno = 'T3' WHERE turno IN ('Noite', '3T');
+
+UPDATE checklist_records SET turno = 'T1' WHERE turno IN ('Manhã', '1T');
+UPDATE checklist_records SET turno = 'T2' WHERE turno IN ('Tarde', '2T');
+UPDATE checklist_records SET turno = 'T3' WHERE turno IN ('Noite', '3T');
+
+-- =====================================================================
+-- 9. PROMOVER PRIMEIRO USUÁRIO A ADMIN (executar depois do signup)
 -- =====================================================================
 -- UPDATE atendentes SET is_admin = true, can_manage_users = true
 --   WHERE email = 'seu-email@exemplo.com';

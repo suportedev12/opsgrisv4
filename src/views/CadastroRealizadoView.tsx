@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import type { CadastroRealizado, Filters, UserProfile } from '@/types';
 import { filterCadastros, getUniqueAtendentes } from '@/utils/filters';
 import { FilterBar } from '@/components/FilterBar';
-import { Pencil, Trash2, Save, X, FileCheck } from 'lucide-react';
+import { Pencil, Trash2, Save, X, FileCheck, PhoneCall } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; icon: ReactNode }> = {
@@ -63,7 +63,6 @@ function calcSla(inicio: string, fim: string): string {
 type FormType = typeof EMPTY;
 
 const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: boolean; options?: readonly string[] }[] = [
-  { key: 'turno', label: 'Turno' },
   { key: 'operacao', label: 'Operação', type: 'select', options: OPERACOES },
   { key: 'eta_origem', label: 'ETA / Origem' },
   { key: 'motorista', label: 'Motorista' },
@@ -73,7 +72,6 @@ const FORM_FIELDS: { key: keyof FormType; label: string; type?: string; span?: b
   { key: 'ano_cavalo', label: 'Ano Veículo' },
   { key: 'placa_carreta', label: 'Placa Carreta' },
   { key: 'ano_carreta', label: 'Ano Carreta' },
-  { key: 'atendente', label: 'Atendente', type: 'select' },
   { key: 'tipo_cadastro', label: 'Tipo de Cadastro', type: 'select', options: TIPOS_CADASTRO },
   { key: 'pendencia_recusa', label: 'Pendência / Recusa', span: true },
   { key: 'obs', label: 'OBS', span: true },
@@ -122,16 +120,20 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
   const filtered = filterCadastros(scopedRecords, filters);
   const atendentes = isManager ? getUniqueAtendentes(records, []) : [];
 
+  const registrarTentativa = () => {
+    const now = nowTime();
+    if (!form.tentativa1) setForm(f => ({ ...f, tentativa1: now }));
+    else if (!form.tentativa2) setForm(f => ({ ...f, tentativa2: now }));
+    else if (!form.tentativa3) setForm(f => ({ ...f, tentativa3: now }));
+  };
+
+  const nextTentativaNum = !form.tentativa1 ? 1 : !form.tentativa2 ? 2 : !form.tentativa3 ? 3 : null;
+
   const save = async () => {
     const now = nowTime();
     const payload = { ...form };
     if (!editing) {
       payload.horario_inicio = now;
-      payload.tentativa1 = now;
-    } else {
-      if (!payload.tentativa1) payload.tentativa1 = now;
-      else if (!payload.tentativa2) payload.tentativa2 = now;
-      else if (!payload.tentativa3) payload.tentativa3 = now;
     }
     payload.horario_fim = now;
     if (editing) {
@@ -151,11 +153,14 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
   const startEdit = (r: CadastroRealizado) => {
     setEditing(r);
     const { id, user_id, created_at, sla_minutes, ...rest } = r;
-    setForm({ ...EMPTY, ...Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, v ?? ''])) } as FormType);
+    const base = { ...EMPTY, ...Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, v ?? ''])) } as FormType;
+    if (!base.atendente) base.atendente = profile?.nome ?? '';
+    if (!base.turno) base.turno = profile?.turno ?? '';
+    setForm(base);
     setShowForm(true);
   };
 
-  const startNew = () => { setEditing(null); setForm({ ...EMPTY, data: todayStr(), mes: currentMes() }); setShowForm(true); };
+  const startNew = () => { setEditing(null); setForm({ ...EMPTY, data: todayStr(), mes: currentMes(), atendente: profile?.nome ?? '', turno: profile?.turno ?? '' }); setShowForm(true); };
 
   const fmtDate = (d: string | null) => {
     if (!d) return '-';
@@ -307,6 +312,20 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                   </div>
                 );
               })}
+              {/* Atendente read-only */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Atendente</label>
+                <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700">
+                  {form.atendente || <span className="text-gray-400">—</span>}
+                </div>
+              </div>
+              {/* Turno read-only */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Turno</label>
+                <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700">
+                  {form.turno || <span className="text-gray-400">—</span>}
+                </div>
+              </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Status</label>
                 <select value={form.status ?? 'Pendente'} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
@@ -315,17 +334,30 @@ export function CadastroRealizadoView({ filters, onFiltersChange, showNewForm, o
                   <option>Recusado</option>
                 </select>
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Horário 1 (auto)</label>
-                <input type="time" value={form.tentativa1 ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Horário 2 (auto)</label>
-                <input type="time" value={form.tentativa2 ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Horário 3 (auto)</label>
-                <input type="time" value={form.tentativa3 ?? ''} readOnly placeholder="—" className={`${inputCls} bg-gray-50 text-gray-500`} />
+              {/* Tentativas */}
+              <div className="col-span-2 md:col-span-4">
+                <label className="mb-2 block text-xs font-semibold text-gray-700">Tentativas de Contato</label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={nextTentativaNum === null}
+                    onClick={registrarTentativa}
+                    className="flex items-center gap-2 rounded-lg bg-[#F47920] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#d96a15] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <PhoneCall className="h-4 w-4" />
+                    {nextTentativaNum !== null ? `Registrar Tentativa ${nextTentativaNum}` : 'Todas as tentativas registradas'}
+                  </button>
+                  <div className="flex gap-3">
+                    {[form.tentativa1, form.tentativa2, form.tentativa3].map((t, i) => (
+                      <div key={i} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium ${
+                        t ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-400'
+                      }`}>
+                        <span className="font-semibold">T{i + 1}</span>
+                        <span>{t || '—:——'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
               <div className="col-span-2 md:col-span-4">
                 <label className="mb-1 block text-xs font-semibold text-gray-700">SLA de Atendimento</label>

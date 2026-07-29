@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { LayoutDashboard, FileCheck, Truck, TrendingUp, Plus, Users, LogOut, ShieldCheck, Menu, X, ChevronRight, Target } from 'lucide-react';
 import type { ActiveTab, Filters } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
+import { fetchProfile, storeProfile } from '@/lib/auth';
 import { Login } from '@/views/Login';
 import { Dashboard } from '@/views/Dashboard';
 import { CadastroRealizadoView } from '@/views/CadastroRealizadoView';
@@ -9,6 +10,7 @@ import { ChecklistView } from '@/views/ChecklistView';
 import { PerformanceView } from '@/views/PerformanceView';
 import { OperadoresView } from '@/views/OperadoresView';
 import { MetasView } from '@/views/MetasView';
+import { ForcePasswordChange } from '@/views/ForcePasswordChange';
 
 const EMPTY_FILTERS: Filters = { turno: '', atendente: '', status: '', dataInicio: '', dataFim: '', search: '' };
 
@@ -78,6 +80,14 @@ function App() {
 
   if (!session) {
     return <Login />;
+  }
+
+  if (profile?.must_change_password) {
+    return <ForcePasswordChange userName={profile.nome ?? 'Usuário'} onDone={async () => {
+      const fresh = await fetchProfile(profile.id);
+      storeProfile(fresh);
+      window.location.reload();
+    }} />;
   }
 
   return (
@@ -234,7 +244,7 @@ function App() {
               <MetasView profile={profile} />
             )}
             {effectiveActive === 'operadores' && isManager && (
-              <OperadoresView />
+              <OperadoresView profile={profile} />
             )}
 
             {tabs.length === 0 && (

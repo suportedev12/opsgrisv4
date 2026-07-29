@@ -1,0 +1,1 @@
+ALTER TABLE atendentes ADD COLUMN IF NOT EXISTS turno text DEFAULT '';

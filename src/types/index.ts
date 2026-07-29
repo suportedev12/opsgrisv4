@@ -70,6 +70,9 @@ export interface UserProfile {
   can_view_dashboard: boolean;
   can_manage_users: boolean;
   active: boolean;
+  turno: string | null;
+  must_change_password: boolean;
+  is_master: boolean;
   created_at: string;
 }
 

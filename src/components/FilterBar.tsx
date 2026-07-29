@@ -40,12 +40,9 @@ export function FilterBar({ filters, onChange, atendentes, placeholder = 'Pesqui
 
       <select value={filters.turno} onChange={e => update({ turno: e.target.value })} className={inputCls}>
         <option value="">Todos os Turnos</option>
-        <option value="Manhã">Manhã</option>
-        <option value="Tarde">Tarde</option>
-        <option value="Noite">Noite</option>
-        <option value="1T">1º Turno</option>
-        <option value="2T">2º Turno</option>
-        <option value="3T">3º Turno</option>
+        <option value="T1">T1</option>
+        <option value="T2">T2</option>
+        <option value="T3">T3</option>
       </select>
 
       {atendentes.length > 0 && (
