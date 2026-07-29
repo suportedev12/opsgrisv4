@@ -4,22 +4,129 @@ Sistema interno de gerenciamento de risco e cadastro operacional da Lösung Expr
 
 ---
 
+## Objetivo do Sistema
+
+O OPS GRIS tem como **objetivo principal medir indicadores e a performance dos atendentes** da torre de controle. O sistema existe para quantificar, de forma objetiva e auditável, o trabalho de cada operador em três dimensões fundamentais:
+
+### 1. Cadastros — Solicitados vs. Realizados
+
+O núcleo do sistema é a comparação entre o que foi **solicitado** e o que foi efetivamente **realizado** por cada atendente. Cada cadastro passa por um ciclo de vida mensurável:
+
+```
+Solicitado → Em atendimento → Validado / Pendente / Recusado
+```
+
+**Indicadores medidos:**
+- **Total de cadastros solicitados** por atendente, turno, semana e mês
+- **Cadastros realizados** (validados) vs. solicitados — taxa de conversão
+- **Cadastros pendentes** — em aberto, aguardando ação
+- **Cadastros recusados** — com motivo de recusa documentado
+- **Tempo médio de atendimento (SLA)** — diferença entre horário de início e fim, em minutos
+- **Número de tentativas** — quantas vezes o atendente precisou contatar o motorista (tentativa 1, 2, 3)
+- **Número de edições** — quantas vezes o registro foi alterado após a criação (edit_count)
+
+### 2. Checklists — Solicitados vs. Realizados
+
+Os checklists operacionais seguem a mesma lógica de solicitado vs. realizado, mas com foco na verificação de conformidade do veículo e motorista:
+
+```
+Solicitado → Em verificação → Validado / Pendência / Reprovado
+```
+
+**Indicadores medidos:**
+- **Total de checklists solicitados** por atendente, turno e período
+- **Checklists realizados** (validados) vs. solicitados
+- **Checklists com pendência** — problemas encontrados que bloqueiam a liberação
+- **Checklists reprovados** — não conformidade crítica
+- **Vencimento de checklist** — alerta vermelho para checklists vencidos
+- **Tempo médio de verificação (SLA)** — duração do atendimento
+- **Número de tentativas** de contato
+
+### 3. Performance dos Atendentes
+
+A tela de Performance consolida todos os indicadores em um **ranking** que compara os atendentes:
+
+| Indicador | Descrição |
+|-----------|-----------|
+| **Eficiência** | % de validados sobre o total de solicitados (validados / total) |
+| **Tempo médio** | SLA médio por atendente (minutos) |
+| **Produtividade** | Volume de cadastros + checklists por dia/semana |
+| **Conquista de meta** | Se atingiu a meta de 85% de eficiência |
+| **Ranking** | Posição relativa entre todos os atendentes |
+
+### 4. Metas e Targets
+
+O sistema permite definir metas de produtividade (semanais ou mensais) que servem como referência para avaliar a performance:
+
+- Metas podem ser **individuais** (por atendente) ou **coletivas** (para toda a equipe)
+- O valor alvo padrão é **85% de eficiência** (validados / total)
+- Metas ativas são exibidas no dashboard e comparadas com os resultados reais
+- O sistema calcula automaticamente se cada atendente **atingiu ou não** a meta
+
+### 5. Dashboard — Visão Executiva
+
+O dashboard consolida todos os indicadores em tempo real para a gestão:
+
+- **KPIs principais**: total, validados, pendentes, recusados, tempo médio
+- **Gráfico de barras por turno**: distribuição de cadastros entre T1, T2, T3
+- **Gráfico de rosca (donut)**: distribuição de status (Validado / Pendente / Recusado)
+- **Gráfico de linha**: tendência temporal (semana a semana, mês a mês)
+- **Produtividade por atendente**: barras horizontais comparando volumes
+- **Registros recentes**: últimos cadastros e checklists inseridos
+
+### Resumo do Fluxo de Medição
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    SOLICITADO                            │
+│  (Demanda recebida pelo atendente na torre)             │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│                  EM ATENDIMENTO                          │
+│  (Atendente registra horário de início)                 │
+│  Tentativas de contato: 1ª → 2ª → 3ª                    │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+    VALIDADO      PENDENTE      RECUSADO
+    (Realizado)   (Em aberto)   (Não realizado)
+          │            │            │
+          └────────────┼────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│                    INDICADORES                          │
+│  • Taxa de conversão (realizado / solicitado)           │
+│  • SLA médio (minutos)                                   │
+│  • Nº de tentativas médias                              │
+│  • Nº de edições                                        │
+│  • Ranking por atendente                                │
+│  • Atingimento de meta (85%)                            │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Sumário
 
-1. [Stack Tecnológica](#stack-tecnológica)
-2. [Estrutura de Pastas](#estrutura-de-pastas)
-3. [Variáveis de Ambiente](#variáveis-de-ambiente)
-4. [Como Rodar Localmente](#como-rodar-localmente)
-5. [Como Está Rodando na VPS](#como-está-rodando-na-vps)
-6. [Estrutura SQL](#estrutura-sql)
-7. [Fluxo de Autenticação e Permissões](#fluxo-de-autenticação-e-permissões)
-8. [Fluxo de Troca Obrigatória de Senha](#fluxo-de-troca-obrigatória-de-senha)
-9. [Edge Functions](#edge-functions)
-10. [Telas do Sistema](#telas-do-sistema)
-11. [Componentes Reutilizáveis](#componentes-reutilizáveis)
-12. [Hooks](#hooks)
-13. [Tipos TypeScript](#tipos-typescript)
-14. [Migrations](#migrations)
+1. [Objetivo do Sistema](#objetivo-do-sistema)
+2. [Stack Tecnológica](#stack-tecnológica)
+3. [Estrutura de Pastas](#estrutura-de-pastas)
+4. [Variáveis de Ambiente](#variáveis-de-ambiente)
+5. [Como Rodar Localmente](#como-rodar-localmente)
+6. [Como Está Rodando na VPS](#como-está-rodando-na-vps)
+7. [Estrutura SQL](#estrutura-sql)
+8. [Fluxo de Autenticação e Permissões](#fluxo-de-autenticação-e-permissões)
+9. [Fluxo de Troca Obrigatória de Senha](#fluxo-de-troca-obrigatória-de-senha)
+10. [Edge Functions](#edge-functions)
+11. [Telas do Sistema](#telas-do-sistema)
+12. [Componentes Reutilizáveis](#componentes-reutilizáveis)
+13. [Hooks](#hooks)
+14. [Tipos TypeScript](#tipos-typescript)
+15. [Migrations](#migrations)
 
 ---
 
