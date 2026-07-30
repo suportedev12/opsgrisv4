@@ -1,4 +1,4 @@
-# OPS GRIS — Torre de Controle | Lösung Express
+# OPS GRIS | Lösung Express
 
 Sistema interno de gerenciamento de risco e cadastro operacional da Lösung Express. Controla cadastros de motoristas/veículos, checklists operacionais, performance de operadores e metas de produtividade.
 
